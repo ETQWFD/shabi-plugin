@@ -405,7 +405,7 @@ async function registerTools(app, ctx) {
       parameters: {
         action: { type: 'string', required: true, description: 'list/switch/add' },
         name: { type: 'string', description: '人格名称' },
-        definition: { type: 'object', description: '新增时的定义对象' },
+        definition: { type: 'object', additionalProperties: true, description: '新增时的定义对象' },
       },
       output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
       async execute(args) {

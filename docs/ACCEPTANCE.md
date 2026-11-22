@@ -51,4 +51,5 @@
 - [x] GitHub 仓库创建与推送：<https://github.com/ETQWFD/shabi-plugin>（`main`）
 - [x] 真实 DSH 0.2.2-rc.5 profile：本地路径 `add` 成功，`--dump-config` 出现 `id: shabi` 组合包层
 - [x] 真实 DSH headless 启动：插件挂载与卸载正常；dummy API key 仅导致模型 401
+- [x] GitHub 直装新 profile 成功；headless 从 GitHub 源启动，Agent 工具注册无错误
 - [x] 全量测试 25/25 通过（含真实 FFmpeg 视频与 QQ 验签）

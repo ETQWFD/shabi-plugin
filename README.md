@@ -146,6 +146,7 @@ node main.js video /path/to/video.mp4 hybrid
 - 真实 DSH `0.2.2-rc.5`：`dsh plugin --profile headless add <本插件>` 成功，`--dump-config` 出现 `# == shabi-plugin / id: shabi` 层。
 - 真实 DSH headless 启动：日志出现“沙币插件已启动”，退出时“沙币插件已卸载”；仅因使用 dummy `DEEPSEEK_API_KEY` 触发模型 401，不是插件错误。
 - GitHub：<https://github.com/ETQWFD/shabi-plugin>，默认分支 `main`。
+- GitHub 直装：全新 profile 执行 `dsh plugin --profile githubtest add github:ETQWFD/shabi-plugin` 成功，`--dump-config` 出现 shabi 层；headless 从 GitHub 源启动正常，9 个 Agent 工具注册无错误。
 
 
 ## 目录
