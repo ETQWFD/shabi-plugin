@@ -1,0 +1,54 @@
+{
+  "name": "shabi-plugin",
+  "version": "1.0.0",
+  "description": "沙币：带眼睛、长期记忆、人格、自主循环、AI 自拍与 QQ 官方机器人的 DSH 桌面插件",
+  "type": "module",
+  "main": "main.js",
+  "exports": {
+    ".": "./main.js",
+    "./core/*": "./core/*",
+    "./lib/*": "./lib/*",
+    "./ui/*": "./ui/*"
+  },
+  "files": [
+    "main.js",
+    "core",
+    "lib",
+    "config",
+    "ui",
+    "docs",
+    "scripts",
+    "cordis.patch.yml",
+    "manifest.json",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node scripts/dev-server.js",
+    "selfcheck": "node main.js selfcheck",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "desktop-assistant",
+    "long-term-memory",
+    "qq-bot",
+    "vision"
+  ],
+  "license": "MIT",
+  "author": "ETQWFD",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ETQWFD/shabi-plugin.git"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.0"
+  }
+}

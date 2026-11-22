@@ -1,0 +1,126 @@
+{
+  "id": "shabi-plugin",
+  "name": "沙币",
+  "version": "1.0.0",
+  "type": "dsh-bundle",
+  "description": "带眼睛、长期记忆、人格、自主循环、AI 自拍与 QQ 官方机器人的桌面插件。",
+  "entry": "main.js",
+  "icon": "ui/icon.svg",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "minVersion": "0.2.0",
+    "recommendedVersion": ">=0.2.0"
+  },
+  "settings": {
+    "page": "ui/settings.html",
+    "schema": "config/settings.schema.json",
+    "apiBase": "/shabi/api",
+    "title": "沙币设置"
+  },
+  "capabilities": [
+    "screen-context",
+    "video-full-analysis",
+    "knowledge-extraction",
+    "long-term-memory",
+    "personality",
+    "autonomy-loop",
+    "interest-selection",
+    "image-selfie",
+    "qq-official-bot",
+    "desktop-help",
+    "safety-guard"
+  ],
+  "permissions": [
+    {
+      "id": "screen.capture",
+      "label": "截屏",
+      "required": false,
+      "reason": "读取用户允许的屏幕内容；可暂停、限定窗口、模糊敏感区域。"
+    },
+    {
+      "id": "screen.ocr",
+      "label": "屏幕 OCR",
+      "required": false,
+      "reason": "识别屏幕文字；默认不落盘。"
+    },
+    {
+      "id": "vision.read",
+      "label": "画面理解",
+      "required": false,
+      "reason": "把截图/视频帧交给用户配置的视觉模型。"
+    },
+    {
+      "id": "llm.chat",
+      "label": "模型调用",
+      "required": false,
+      "reason": "知识抽取、决策与对话；使用用户自己的 API Key。"
+    },
+    {
+      "id": "media.ffmpeg",
+      "label": "视频解码",
+      "required": false,
+      "reason": "本地 ffmpeg/ffprobe 抽帧与音频提取。"
+    },
+    {
+      "id": "filesystem.plugin-data",
+      "label": "插件数据目录",
+      "required": true,
+      "reason": "记忆、日志、帧缓存与配置。"
+    },
+    {
+      "id": "filesystem.user-authorized-dirs",
+      "label": "用户授权目录",
+      "required": false,
+      "reason": "仅读写设置页白名单内的目录；受保护文件禁止覆盖/删除。"
+    },
+    {
+      "id": "network.user-endpoints",
+      "label": "用户配置的网络端点",
+      "required": false,
+      "reason": "仅访问用户填写的 LLM/图片 API/QQ 官方 API。"
+    },
+    {
+      "id": "qq.official-bot",
+      "label": "QQ 官方机器人",
+      "required": false,
+      "reason": "接收 @ 消息并回复；不使用个人号自动化。"
+    },
+    {
+      "id": "desktop.input",
+      "label": "鼠标键盘自动化",
+      "required": false,
+      "reason": "仅限白名单应用/插件窗口，高风险操作需二次确认。"
+    },
+    {
+      "id": "secrets.host",
+      "label": "宿主密钥",
+      "required": false,
+      "reason": "可选读取宿主 secrets；否则本地加密保存。"
+    }
+  ],
+  "hostServices": [
+    "screen", "vision", "llm", "media", "ui", "chat", "http", "secrets", "accounts", "content", "input"
+  ],
+  "commands": [
+    { "name": "帮助", "description": "列出沙币可用命令" },
+    { "name": "看屏幕", "description": "读取当前屏幕上下文" },
+    { "name": "发自拍", "description": "生成一张带 AI 标注的自拍" },
+    { "name": "记住 <内容>", "description": "写入长期记忆" },
+    { "name": "忘掉 <id>", "description": "删除一条记忆（需确认）" },
+    { "name": "你记得什么", "description": "检索记忆" },
+    { "name": "分析视频 <路径或URL>", "description": "登记并分析视频" },
+    { "name": "切换人格 <名称>", "description": "切换人格" },
+    { "name": "开始自主 / 停止自主", "description": "开关自主循环" },
+    { "name": "状态", "description": "查看运行状态" }
+  ],
+  "compliance": {
+    "account": "账号由用户本人登录并授权；插件不代登录、不保存密码。",
+    "antiHarassment": "不骚扰其他用户，不批量私信、评论、刷量；操作频率接近正常用户。",
+    "platformLimits": "遇到验证码、风控提示、平台限制或规则不允许时立即停止并提示用户。",
+    "noEvasion": "不实现反检测、不绕过平台限制、不伪造人类行为指纹。",
+    "selfieDisclosure": "所有生成图片标注“AI 生成”，不冒充真人。",
+    "privacy": "屏幕、记忆与聊天默认本地处理；日志脱敏；记忆内容 AES-256-GCM 加密。"
+  }
+}

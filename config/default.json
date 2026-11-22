@@ -1,0 +1,264 @@
+{
+  "dataDir": ".",
+  "language": "zh-CN",
+  "eye": {
+    "enabled": true,
+    "mode": "interval",
+    "intervalSec": 30,
+    "capture": {
+      "display": "primary",
+      "region": null,
+      "command": "",
+      "timeoutSec": 15,
+      "format": "png"
+    },
+    "ocr": {
+      "enabled": true,
+      "command": "",
+      "languages": ["chi_sim", "eng"],
+      "maxChars": 4000,
+      "timeoutSec": 30
+    },
+    "vision": {
+      "enabled": true,
+      "maxWidth": 1280,
+      "detail": "auto",
+      "timeoutSec": 45
+    },
+    "privacy": {
+      "paused": false,
+      "windowAllowlist": [],
+      "blurRegions": [],
+      "storeScreenshots": false,
+      "redactPatterns": ["password", "密码", "token", "api[_ -]?key", "身份证", "银行卡", "验证码"]
+    },
+    "failure": {
+      "maxConsecutive": 5,
+      "backoffSec": 60,
+      "skipLog": true
+    }
+  },
+
+  "video": {
+    "defaultMode": "hybrid",
+    "mode": "hybrid",
+    "fpsCap": 60,
+    "maxFrames": 120000,
+    "maxVideoSeconds": 120,
+    "coverageThreshold": 0.999,
+    "maxGapMs": 1000,
+    "chunkSec": 30,
+    "chunkOverlapSec": 1,
+    "keyframeSceneThreshold": 0.35,
+    "analysisWidth": 1280,
+    "frameQuality": 3,
+    "analysisBatch": 8,
+    "holeFill": true,
+    "retries": 3,
+    "retryDelaySec": 5,
+    "autoRepair": true,
+    "timelineToleranceMs": 200,
+    "ocrFrames": true,
+    "asrTimeoutSec": 600,
+    "downloadTimeoutSec": 300,
+    "asr": {
+      "preferSubtitles": true,
+      "language": "zh",
+      "command": "",
+      "model": "whisper"
+    }
+  },
+
+  "knowledge": {
+    "dedupeThreshold": 0.9,
+    "crossValidateThreshold": 0.85,
+    "maxItemsPerVideo": 200,
+    "chunkSec": 60,
+    "minConfidence": 0.3,
+    "autoWrite": true,
+    "graphPrune": 0.05
+  },
+
+  "memory": {
+    "maxEntriesPerFile": 500,
+    "maxFileBytes": 8388608,
+    "forgetThreshold": 0.25,
+    "strengthThreshold": 0.2,
+    "halfLifeDays": 30,
+    "tauBaseDays": 7,
+    "tauMaxDays": 60,
+    "archiveEnabled": true,
+    "encrypt": true,
+    "compressSimilarity": 0.92,
+    "exportFormat": "ini",
+    "recallTopK": 6,
+    "autoConsolidate": true,
+    "consolidateEvery": 50,
+    "emotionBoost": 0.15,
+    "resurfaceBoost": 0.2,
+    "archiveMaxEntriesPerFile": 1000
+  },
+
+  "personality": {
+    "active": "tsundere",
+    "customPersonalityPath": "data/personalities.custom.json"
+  },
+
+  "autonomy": {
+    "enabled": false,
+    "intervalSec": 180,
+    "jitterSec": 60,
+    "dailyLimit": 40,
+    "hourlyLimit": 8,
+    "cooldownSec": 30,
+    "quietHours": ["23:00", "07:00"],
+    "proactivity": 0.45,
+    "useLlm": true,
+    "resurfaceEveryTicks": 20,
+    "maxGoals": 20,
+    "requireConfirmForHighRisk": true,
+    "platformBlockMin": 30,
+    "dedupeWindowSec": 3600,
+    "maxActionsPerTick": 1
+  },
+
+  "imageApi": {
+    "provider": "openai",
+    "endpoint": "https://api.openai.com/v1",
+    "apiKey": "",
+    "model": "gpt-image-1",
+    "workflow": "",
+    "referenceImages": [],
+    "basePrompt": "一位成年虚拟助手，东方气质，清爽自然，生活化自拍风格；不模仿任何真实人物；画面克制、非色情、非未成年人。",
+    "negativePrompt": "低清晰度, 变形, 多余手指, 文字水印, 暴露, 色情, 未成年人, 真实名人",
+    "size": "1024x1024",
+    "style": "自然、生活化",
+    "timeoutSec": 180,
+    "retries": 1
+  },
+
+  "qqBot": {
+    "enabled": false,
+    "mode": "webhook",
+    "appId": "",
+    "appSecret": "",
+    "token": "",
+    "sandbox": false,
+    "intents": 1107296256,
+    "webhookPath": "/shabi/qq/webhook",
+    "allowedChannels": [],
+    "publicBaseUrl": "",
+    "apiBase": "https://api.sgroup.qq.com",
+    "tokenUrl": "https://bots.qq.com/app/getAppAccessToken",
+    "maxReplyChars": 800,
+    "includeScreen": false,
+    "rateLimit": {
+      "perUserPerMin": 6,
+      "perChannelPerMin": 20,
+      "dedupeWindow": 600
+    }
+  },
+
+  "safety": {
+    "allowedDirs": [],
+    "appAllowlist": ["shabi-plugin"],
+    "denyPatterns": [
+      "**/.ssh/**",
+      "**/id_rsa*",
+      "**/.aws/**",
+      "**/.config/gcloud/**",
+      "**/Library/Keychains/**",
+      "**/AppData/Roaming/Microsoft/Crypto/**"
+    ],
+    "confirmTtlSec": 120,
+    "confirmHighRisk": true,
+    "logActions": true,
+    "backupBeforeWrite": true
+  },
+
+  "interest": {
+    "epsilon": 0.1,
+    "ucb": 0.15,
+    "sources": ["memory", "chat", "watch"],
+    "maxCandidates": 200,
+    "boost": 0.2,
+    "decayHalfLifeDays": 30
+  },
+
+  "privacy": {
+    "qqReadScreen": false,
+    "sendContentToThirdParty": false,
+    "telemetry": false,
+    "localOnly": true,
+    "redactLogs": true,
+    "screenshotRetentionDays": 0,
+    "memoryRetentionDays": 0
+  },
+
+  "accounts": {
+    "platforms": [
+      {
+        "platform": "bilibili",
+        "label": "哔哩哔哩",
+        "authorized": false,
+        "sessionMode": "user-cookie",
+        "cookieSource": "host",
+        "allowedActions": ["watch-authorized-video"],
+        "note": "由用户本人登录；插件不代登录、不保存密码"
+      },
+      {
+        "platform": "douyin",
+        "label": "抖音",
+        "authorized": false,
+        "sessionMode": "user-cookie",
+        "cookieSource": "host",
+        "allowedActions": ["watch-authorized-video"],
+        "note": "由用户本人登录；遇验证码/风控立即停止"
+      },
+      {
+        "platform": "youtube",
+        "label": "YouTube",
+        "authorized": false,
+        "sessionMode": "user-cookie",
+        "cookieSource": "host",
+        "allowedActions": ["watch-authorized-video"],
+        "note": "仅观看用户已登录且允许的内容"
+      },
+      {
+        "platform": "qq",
+        "label": "QQ 官方机器人",
+        "authorized": false,
+        "sessionMode": "official-bot",
+        "cookieSource": "none",
+        "allowedActions": ["reply-at-message"],
+        "note": "仅使用 QQ 官方机器人平台，不接入个人号"
+      }
+    ]
+  },
+
+  "llm": {
+    "endpoint": "https://api.deepseek.com/v1",
+    "apiKey": "",
+    "model": "deepseek-chat",
+    "visionModel": "",
+    "embedModel": "",
+    "timeoutSec": 60,
+    "temperature": 0.7,
+    "maxTokens": 1024
+  },
+
+  "media": {
+    "ffmpeg": "ffmpeg",
+    "ffprobe": "ffprobe",
+    "maxConcurrent": 1,
+    "asrCommand": ""
+  },
+
+  "logging": {
+    "level": "info",
+    "maxFileBytes": 5242880,
+    "keepFiles": 7,
+    "redact": true,
+    "console": true
+  }
+}

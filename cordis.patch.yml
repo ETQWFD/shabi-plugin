@@ -1,0 +1,5 @@
+# 沙币组合包补丁：向 DSH profile 插入一行插件。
+# 安装后可用 `dsh --profile <name> --dump-config` 查看本层。
+- insert:
+    - id: shabi
+      name: shabi-plugin

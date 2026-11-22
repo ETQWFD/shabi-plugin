@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>沙币设置</title>
+  <link rel="stylesheet" href="./settings.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2.2 12s3.6-6.2 9.8-6.2S21.8 12 21.8 12s-3.6 6.2-9.8 6.2S2.2 12 2.2 12Z"/>
+            <circle cx="12" cy="12" r="3.1"/>
+            <path d="M12 2.8v2.1M12 19.1v2.1M3.7 5.3l1.5 1.5M18.8 17.2l1.5 1.5M20.3 5.3l-1.5 1.5M5.2 17.2l-1.5 1.5" opacity=".55"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">沙币</div>
+          <div class="brand-sub">shabi-plugin</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="设置分组"></nav>
+
+      <div class="sidebar-foot">
+        <div class="status-line"><span class="dot" id="statusDot"></span><span id="statusText">正在连接宿主…</span></div>
+        <div id="versionText">v1.0.0</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>沙币设置</h1>
+          <p id="subtitle">眼睛、记忆、人格、自主循环与 QQ 官方机器人</p>
+        </div>
+        <div class="top-actions">
+          <span class="dirty" id="dirty">有未保存修改</span>
+          <button class="btn ghost" id="reload">重新加载</button>
+          <button class="btn primary" id="save">保存</button>
+        </div>
+      </header>
+
+      <div class="content" id="content">
+        <div class="empty-state">正在加载配置…</div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer-bar">
+    <div class="footer-note" id="footerNote">配置保存在插件根 settings.json，密钥单独加密存放在 secrets.ioshb（0600，已加入 .gitignore）。</div>
+    <div class="action-row">
+      <button class="btn ghost small" id="exportConfig">导出配置（不含密钥）</button>
+      <button class="btn primary small" id="saveBottom">保存设置</button>
+    </div>
+  </footer>
+
+  <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+  <div class="modal-mask" id="modalMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <h2 id="modalTitle">编辑</h2>
+        <button class="btn small ghost" id="modalClose" aria-label="关闭">关闭</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./settings.js"></script>
+</body>
+</html>

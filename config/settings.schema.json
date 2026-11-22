@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "title": "沙币设置",
+  "description": "眼睛、视频、记忆、人格、自主循环、自拍与 QQ 官方机器人的全部配置。保存后即时生效（dataDir 变更需重启）。",
+  "groups": [
+    {
+      "id": "eye",
+      "title": "眼睛与屏幕",
+      "description": "定时截屏、OCR 与画面理解。隐私优先：默认不落盘，可只识别指定窗口。",
+      "fields": [
+        { "key": "eye.enabled", "label": "启用屏幕识别", "type": "boolean", "default": true, "hint": "关闭后 getScreenContext() 返回 null，不截屏。" },
+        { "key": "eye.mode", "label": "运行模式", "type": "select", "options": [{ "value": "interval", "label": "定时截屏" }, { "value": "manual", "label": "仅手动" }], "default": "interval" },
+        { "key": "eye.intervalSec", "label": "截屏间隔", "type": "select", "options": [{ "value": 5, "label": "5 秒" }, { "value": 30, "label": "30 秒" }, { "value": 60, "label": "1 分钟" }], "default": 30 },
+        { "key": "eye.capture.display", "label": "截屏范围", "type": "select", "options": [{ "value": "primary", "label": "主屏" }, { "value": "all", "label": "所有屏幕" }, { "value": "active", "label": "当前活动窗口所在屏" }], "default": "primary" },
+        { "key": "eye.capture.region", "label": "自定义区域", "type": "text", "placeholder": "x,y,w,h；留空为全屏", "hint": "像素坐标，例如 0,0,1920,1080。" },
+        { "key": "eye.capture.command", "label": "截屏命令（可选）", "type": "textarea", "rows": 3, "placeholder": "留空使用宿主截屏能力；支持 {output} 占位符", "hint": "Linux 示例：gnome-screenshot -f {output}；macOS：screencapture -x {output}。" },
+        { "key": "eye.privacy.paused", "label": "暂停屏幕识别", "type": "boolean", "default": false, "hint": "暂停后不截屏、不 OCR，但记忆与聊天仍可用。" },
+        { "key": "eye.privacy.windowAllowlist", "label": "只识别这些窗口", "type": "list", "rows": 4, "placeholder": "每行一个窗口标题关键词；留空表示不限制", "hint": "匹配窗口标题或应用名；不匹配的窗口直接跳过。" },
+        { "key": "eye.privacy.blurRegions", "label": "敏感区域模糊", "type": "list", "rows": 3, "placeholder": "每行 x,y,w,h；可写多行", "hint": "在 OCR/视觉理解前对指定区域做高斯模糊。" },
+        { "key": "eye.privacy.storeScreenshots", "label": "保存截图文件", "type": "boolean", "default": false, "hint": "默认只在内存中处理；开启后截图落盘到 data/screenshots。" },
+        { "key": "eye.ocr.enabled", "label": "启用 OCR", "type": "boolean", "default": true },
+        { "key": "eye.ocr.languages", "label": "OCR 语言", "type": "list", "rows": 2, "placeholder": "chi_sim\neng", "hint": "Tesseract 语言包名称，每行一个。" },
+        { "key": "eye.ocr.command", "label": "OCR 命令（可选）", "type": "textarea", "rows": 3, "placeholder": "留空使用宿主 OCR；支持 {input}、{output}、{lang}", "hint": "命令需把识别文本写入 {output}。" },
+        { "key": "eye.vision.enabled", "label": "启用画面理解", "type": "boolean", "default": true, "hint": "需要配置 LLM 视觉模型；缺失时降级为 OCR。" },
+        { "key": "eye.failure.maxConsecutive", "label": "连续失败阈值", "type": "number", "min": 1, "max": 30, "default": 5, "hint": "连续失败达到阈值后暂停一段时间并提示。" },
+        { "key": "eye.failure.backoffSec", "label": "失败退避秒数", "type": "number", "min": 10, "max": 600, "default": 60 }
+      ]
+    },
+
+    {
+      "id": "video",
+      "title": "视频完整看",
+      "description": "0–2 分钟逐帧/关键帧/混合抽帧、ASR、时间轴对齐、场景与事件、完整性校验。",
+      "fields": [
+        { "key": "video.defaultMode", "label": "默认抽帧模式", "type": "select", "options": [{ "value": "frame", "label": "逐帧（最完整，帧数最多）" }, { "value": "keyframe", "label": "仅关键帧（最快）" }, { "value": "hybrid", "label": "混合（关键帧+每秒+变化帧）" }], "default": "hybrid" },
+        { "key": "video.coverageThreshold", "label": "覆盖率阈值", "type": "number", "min": 0.99, "max": 1, "step": 0.001, "default": 0.999, "hint": "低于该值会补抽/重跑；验收要求 ≥99.9%。" },
+        { "key": "video.maxGapMs", "label": "最大空洞（毫秒）", "type": "number", "min": 500, "max": 2000, "step": 100, "default": 1000, "hint": "时间轴每 1 秒必须有覆盖。" },
+        { "key": "video.chunkSec", "label": "分块大小（秒）", "type": "number", "min": 10, "max": 120, "default": 30 },
+        { "key": "video.chunkOverlapSec", "label": "分块重叠（秒）", "type": "number", "min": 0, "max": 5, "step": 0.5, "default": 1 },
+        { "key": "video.keyframeSceneThreshold", "label": "场景变化阈值", "type": "range", "min": 0.1, "max": 0.9, "step": 0.05, "default": 0.35, "hint": "值越小越敏感，变化帧补偿越多。" },
+        { "key": "video.fpsCap", "label": "逐帧 FPS 上限", "type": "number", "min": 1, "max": 60, "default": 60 },
+        { "key": "video.maxFrames", "label": "最大帧数", "type": "number", "min": 1000, "max": 240000, "step": 1000, "default": 120000 },
+        { "key": "video.maxVideoSeconds", "label": "最长视频（秒）", "type": "number", "min": 30, "max": 120, "default": 120, "hint": "规格要求 0–2 分钟；超过会拒绝并提示。" },
+        { "key": "video.analysisWidth", "label": "分析宽度", "type": "number", "min": 480, "max": 1920, "step": 16, "default": 1280 },
+        { "key": "video.frameQuality", "label": "JPEG 质量", "type": "number", "min": 1, "max": 31, "default": 3, "hint": "ffmpeg -q:v，数字越小质量越高。" },
+        { "key": "video.analysisBatch", "label": "每批理解帧数", "type": "number", "min": 1, "max": 32, "default": 8 },
+        { "key": "video.holeFill", "label": "自动补洞", "type": "boolean", "default": true },
+        { "key": "video.autoRepair", "label": "完整性失败自动重跑", "type": "boolean", "default": true },
+        { "key": "video.retries", "label": "失败重试次数", "type": "number", "min": 0, "max": 5, "default": 3 },
+        { "key": "video.timelineToleranceMs", "label": "时间轴容差（毫秒）", "type": "number", "min": 50, "max": 500, "default": 200 },
+        { "key": "video.ocrFrames", "label": "逐帧 OCR", "type": "boolean", "default": true, "hint": "关闭后仅做视觉理解，画面文字可能缺失。" },
+        { "key": "video.asr.preferSubtitles", "label": "优先使用字幕", "type": "boolean", "default": true, "hint": "有 .srt/.vtt/.ass 字幕时优先，并校验时间轴。" },
+        { "key": "video.asr.language", "label": "ASR 语言", "type": "select", "options": [{ "value": "zh", "label": "中文" }, { "value": "en", "label": "英文" }, { "value": "auto", "label": "自动" }], "default": "zh" },
+        { "key": "video.asr.command", "label": "ASR 命令（可选）", "type": "textarea", "rows": 3, "placeholder": "支持 {input}、{output}、{language}；需输出 JSON 或 SRT", "hint": "留空使用宿主 ASR；建议 whisper.cpp / faster-whisper。" },
+        { "key": "video.asrTimeoutSec", "label": "ASR 超时（秒）", "type": "number", "min": 60, "max": 1800, "default": 600 }
+      ]
+    },
+
+    {
+      "id": "autonomy",
+      "title": "自主循环",
+      "description": "感知 → 记忆 → 决策 → 白名单动作 → 审计 → 冷却。默认关闭，开启后受每日/每小时上限与安静时段约束。",
+      "fields": [
+        { "key": "autonomy.enabled", "label": "启用自主行为", "type": "boolean", "default": false },
+        { "key": "autonomy.intervalSec", "label": "基础间隔（秒）", "type": "number", "min": 30, "max": 1800, "default": 180 },
+        { "key": "autonomy.jitterSec", "label": "随机抖动（秒）", "type": "number", "min": 0, "max": 600, "default": 60, "hint": "避免机械式固定节奏。" },
+        { "key": "autonomy.dailyLimit", "label": "每日动作上限", "type": "number", "min": 1, "max": 200, "default": 40 },
+        { "key": "autonomy.hourlyLimit", "label": "每小时动作上限", "type": "number", "min": 1, "max": 60, "default": 8 },
+        { "key": "autonomy.cooldownSec", "label": "动作冷却（秒）", "type": "number", "min": 5, "max": 600, "default": 30 },
+        { "key": "autonomy.quietHours", "label": "安静时段", "type": "timeRange", "default": ["23:00", "07:00"], "hint": "该时段不主动搭话；跨午夜自动识别。" },
+        { "key": "autonomy.proactivity", "label": "主动程度", "type": "range", "min": 0, "max": 1, "step": 0.05, "default": 0.45 },
+        { "key": "autonomy.useLlm", "label": "使用 LLM 决策", "type": "boolean", "default": true, "hint": "关闭后只用规则引擎，零 token 消耗。" },
+        { "key": "autonomy.resurfaceEveryTicks", "label": "每 N 轮回顾归档", "type": "number", "min": 1, "max": 200, "default": 20 },
+        { "key": "autonomy.maxGoals", "label": "目标队列上限", "type": "number", "min": 1, "max": 100, "default": 20 },
+        { "key": "autonomy.requireConfirmForHighRisk", "label": "高风险动作二次确认", "type": "boolean", "default": true, "hint": "关闭也不推荐：文件删除、鼠标键盘、外发消息属于高风险。" },
+        { "key": "autonomy.platformBlockMin", "label": "平台限制后停止（分钟）", "type": "number", "min": 5, "max": 1440, "default": 30 }
+      ]
+    },
+
+    {
+      "id": "personality",
+      "title": "人格",
+      "description": "人格只改变语气与主动程度，不能覆盖安全硬约束。",
+      "fields": [
+        {
+          "key": "personality.active",
+          "label": "当前人格",
+          "type": "select",
+          "default": "tsundere",
+          "options": [
+            { "value": "tsundere", "label": "傲娇（默认）" },
+            { "value": "gentle", "label": "温柔" },
+            { "value": "sharp", "label": "毒舌" },
+            { "value": "calm", "label": "冷静" },
+            { "value": "energetic", "label": "元气" }
+          ],
+          "hint": "自定义人格保存后会自动出现在此列表。"
+        },
+        { "key": "__action.personality.add", "label": "新增自定义人格", "type": "action", "action": "personalityAdd", "button": "打开人格编辑器" },
+        { "key": "__list.personalities", "label": "人格列表", "type": "customList", "source": "personalities", "hint": "点击卡片切换；自定义人格可编辑/删除。" }
+      ]
+    },
+
+    {
+      "id": "imageApi",
+      "title": "AI 自拍",
+      "description": "调用图片生成 API，使用 4 张人物参考图保持形象一致；所有输出必须标注“AI 生成”。",
+      "fields": [
+        { "key": "imageApi.provider", "label": "接口类型", "type": "select", "options": [{ "value": "openai", "label": "OpenAI 兼容（images/generations + edits）" }, { "value": "generic", "label": "通用 JSON 接口" }, { "value": "sdwebui", "label": "Stable Diffusion WebUI" }], "default": "openai" },
+        { "key": "imageApi.endpoint", "label": "Endpoint", "type": "text", "placeholder": "https://api.openai.com/v1", "hint": "不要包含末尾斜杠。" },
+        { "key": "imageApi.apiKey", "label": "API Key", "type": "password", "hint": "加密保存在 data/secrets.ioshb，界面只显示尾 4 位。" },
+        { "key": "imageApi.model", "label": "模型 / 工作流", "type": "text", "placeholder": "gpt-image-1 / flux / SD 模型名" },
+        { "key": "imageApi.workflow", "label": "Workflow（可选）", "type": "text", "placeholder": "ComfyUI 工作流 ID 或自定义字段" },
+        { "key": "imageApi.referenceImages", "label": "人物参考图（最多 4 张）", "type": "imageList", "max": 4, "hint": "本地路径或 https URL；用于保持同一人物形象。请使用你有权使用的图片。" },
+        { "key": "imageApi.basePrompt", "label": "基础提示词", "type": "textarea", "rows": 4 },
+        { "key": "imageApi.negativePrompt", "label": "负面提示词", "type": "textarea", "rows": 3 },
+        { "key": "imageApi.size", "label": "尺寸", "type": "select", "options": [{ "value": "1024x1024", "label": "1024×1024" }, { "value": "1024x1536", "label": "1024×1536 竖版" }, { "value": "1536x1024", "label": "1536×1024 横版" }, { "value": "512x512", "label": "512×512" }], "default": "1024x1024" },
+        { "key": "imageApi.style", "label": "风格", "type": "text", "placeholder": "自然、生活化、胶片感" },
+        { "key": "imageApi.timeoutSec", "label": "超时（秒）", "type": "number", "min": 30, "max": 600, "default": 180 },
+        { "key": "imageApi.retries", "label": "重试次数", "type": "number", "min": 0, "max": 3, "default": 1 },
+        { "key": "__action.image.test", "label": "测试连接", "type": "action", "action": "imageTest", "button": "测试 API" },
+        { "key": "__action.image.preview", "label": "生成预览", "type": "action", "action": "imagePreview", "button": "生成一张自拍" }
+      ]
+    },
+
+    {
+      "id": "memory",
+      "title": "长期记忆",
+      "description": "IOSHB1 分卷存储、遗忘曲线、归档、压缩与“突然记起来”。删除/归档会记录审计日志。",
+      "fields": [
+        { "key": "memory.maxEntriesPerFile", "label": "每卷最大条数", "type": "number", "min": 50, "max": 2000, "default": 500 },
+        { "key": "memory.maxFileBytes", "label": "单卷最大字节", "type": "number", "min": 1048576, "max": 67108864, "step": 1048576, "default": 8388608 },
+        { "key": "memory.forgetThreshold", "label": "遗忘分阈值", "type": "range", "min": 0, "max": 1, "step": 0.01, "default": 0.25, "hint": "遗忘分 = 重要度×0.5 + 新近度×0.3 + 访问归一×0.2。" },
+        { "key": "memory.strengthThreshold", "label": "强度归档阈值", "type": "range", "min": 0, "max": 1, "step": 0.01, "default": 0.2 },
+        { "key": "memory.halfLifeDays", "label": "新近度半衰期（天）", "type": "number", "min": 1, "max": 365, "default": 30 },
+        { "key": "memory.tauBaseDays", "label": "衰减基准 τ（天）", "type": "number", "min": 1, "max": 90, "default": 7 },
+        { "key": "memory.tauMaxDays", "label": "衰减上限 τ（天）", "type": "number", "min": 30, "max": 365, "default": 60 },
+        { "key": "memory.archiveEnabled", "label": "启用归档", "type": "boolean", "default": true },
+        { "key": "memory.encrypt", "label": "记忆内容加密", "type": "boolean", "default": true, "hint": "AES-256-GCM；主密钥优先取 SHABI_MASTER_KEY，否则本地生成 0600 密钥文件。" },
+        { "key": "memory.compressSimilarity", "label": "压缩相似度阈值", "type": "range", "min": 0.7, "max": 1, "step": 0.01, "default": 0.92 },
+        { "key": "memory.exportFormat", "label": "导出格式", "type": "select", "options": [{ "value": "ini", "label": "INI（[memory 1] 开始）" }, { "value": "ioshb", "label": "IOSHB 备份" }], "default": "ini" },
+        { "key": "memory.recallTopK", "label": "默认召回条数", "type": "number", "min": 1, "max": 20, "default": 6 },
+        { "key": "memory.autoConsolidate", "label": "自动巩固", "type": "boolean", "default": true },
+        { "key": "memory.consolidateEvery", "label": "每 N 条巩固一次", "type": "number", "min": 5, "max": 200, "default": 50 },
+        { "key": "__action.memory.search", "label": "搜索记忆", "type": "action", "action": "memorySearch", "button": "搜索" },
+        { "key": "__action.memory.forget", "label": "运行遗忘结算", "type": "action", "action": "memoryForget", "button": "立即结算" },
+        { "key": "__action.memory.compress", "label": "压缩归档相似记忆", "type": "action", "action": "memoryCompress", "button": "压缩" },
+        { "key": "__action.memory.export", "label": "导出记忆", "type": "action", "action": "memoryExport", "button": "导出 INI" },
+        { "key": "__action.memory.resurface", "label": "从归档里突然想起", "type": "action", "action": "memoryResurface", "button": "尝试回忆" },
+        { "key": "__list.memory", "label": "记忆浏览", "type": "memoryList", "hint": "支持查看、归档、删除、详情。" }
+      ]
+    },
+
+    {
+      "id": "safety",
+      "title": "安全与权限",
+      "description": "文件白名单、应用白名单、危险操作确认、审计与回滚。所有路径在写入前做 realpath 归一化。",
+      "fields": [
+        { "key": "safety.allowedDirs", "label": "授权目录", "type": "paths", "rows": 5, "hint": "每行一个绝对路径；插件目录自动允许。留空表示只允许插件目录。" },
+        { "key": "safety.appAllowlist", "label": "允许鼠标键盘的应用", "type": "list", "rows": 4, "hint": "仅这些应用/插件窗口可接收自动化输入；默认只允许沙币自身。" },
+        { "key": "safety.denyPatterns", "label": "禁止路径模式", "type": "list", "rows": 5, "hint": "glob 模式，例如 **/.ssh/**。" },
+        { "key": "safety.confirmTtlSec", "label": "确认有效期（秒）", "type": "number", "min": 30, "max": 600, "default": 120 },
+        { "key": "safety.confirmHighRisk", "label": "高风险必须确认", "type": "boolean", "default": true },
+        { "key": "safety.logActions", "label": "记录动作审计", "type": "boolean", "default": true },
+        { "key": "safety.backupBeforeWrite", "label": "写入前备份", "type": "boolean", "default": true },
+        { "key": "__action.safety.check", "label": "检查路径是否允许", "type": "action", "action": "safetyCheck", "button": "检查" },
+        { "key": "__list.actions", "label": "最近动作与回滚", "type": "actionList", "source": "actions", "hint": "显示 logs/actions.jsonl 最近记录，可回滚有备份的动作。" }
+      ]
+    },
+
+    {
+      "id": "privacy",
+      "title": "隐私",
+      "description": "默认本地处理、无遥测、不把屏幕/记忆发给未授权第三方。",
+      "fields": [
+        { "key": "privacy.qqReadScreen", "label": "QQ 端允许读取屏幕", "type": "boolean", "default": false, "hint": "默认禁止；QQ 消息来自外部，开启会增加隐私风险。" },
+        { "key": "privacy.sendContentToThirdParty", "label": "允许发送内容到第三方", "type": "boolean", "default": false, "hint": "仅在你配置的 LLM/图片 API 范围内使用；关闭后这些能力降级。" },
+        { "key": "privacy.telemetry", "label": "匿名遥测", "type": "boolean", "default": false, "hint": "本插件不实现遥测；保持关闭。" },
+        { "key": "privacy.localOnly", "label": "仅本地处理", "type": "boolean", "default": true },
+        { "key": "privacy.redactLogs", "label": "日志脱敏", "type": "boolean", "default": true, "hint": "自动隐藏 sk-*、Bearer、32+ hex、密码字段。" },
+        { "key": "privacy.screenshotRetentionDays", "label": "截图保留天数", "type": "number", "min": 0, "max": 30, "default": 0, "hint": "0 表示不保留。" },
+        { "key": "privacy.memoryRetentionDays", "label": "记忆保留天数", "type": "number", "min": 0, "max": 3650, "default": 0, "hint": "0 表示长期保留，由遗忘曲线管理。" }
+      ]
+    },
+
+    {
+      "id": "qqBot",
+      "title": "QQ 官方机器人",
+      "description": "仅使用 QQ 官方机器人平台（Webhook / WebSocket），不接入个人号。接收 @ 消息，去重、限频后走同一人格与记忆链路。",
+      "fields": [
+        { "key": "qqBot.enabled", "label": "启用 QQ 机器人", "type": "boolean", "default": false },
+        { "key": "qqBot.mode", "label": "接入方式", "type": "select", "options": [{ "value": "webhook", "label": "Webhook（需要公网 HTTPS 回调）" }, { "value": "websocket", "label": "WebSocket（无需公网回调）" }], "default": "webhook" },
+        { "key": "qqBot.appId", "label": "AppID", "type": "text" },
+        { "key": "qqBot.appSecret", "label": "AppSecret", "type": "password" },
+        { "key": "qqBot.token", "label": "机器人 Token（可选）", "type": "password", "hint": "部分环境使用 BotToken；与 AppSecret 二选一或都填。" },
+        { "key": "qqBot.sandbox", "label": "沙箱环境", "type": "boolean", "default": false },
+        { "key": "qqBot.intents", "label": "Intents", "type": "number", "default": 1107296256, "hint": "默认群 @ + 公域消息。修改前请确认平台文档。" },
+        { "key": "qqBot.webhookPath", "label": "Webhook 路径", "type": "text", "default": "/shabi/qq/webhook" },
+        { "key": "qqBot.publicBaseUrl", "label": "公网基址", "type": "text", "placeholder": "https://your-domain.example", "hint": "QQ 图片回复需要可公网访问的 URL；没有则只回文字。" },
+        { "key": "qqBot.allowedChannels", "label": "允许的频道/群", "type": "list", "rows": 4, "hint": "留空表示所有已授权会话；建议填写白名单。" },
+        { "key": "qqBot.maxReplyChars", "label": "单条回复上限", "type": "number", "min": 100, "max": 2000, "default": 800 },
+        { "key": "qqBot.includeScreen", "label": "QQ 回复可带屏幕上下文", "type": "boolean", "default": false, "hint": "还需要 privacy.qqReadScreen=true。" },
+        { "key": "qqBot.rateLimit.perUserPerMin", "label": "每用户每分钟上限", "type": "number", "min": 1, "max": 30, "default": 6 },
+        { "key": "qqBot.rateLimit.perChannelPerMin", "label": "每频道每分钟上限", "type": "number", "min": 1, "max": 60, "default": 20 },
+        { "key": "__action.qq.start", "label": "启动 / 停止", "type": "action", "action": "qqToggle", "button": "启动机器人" },
+        { "key": "__action.qq.test", "label": "测试连接", "type": "action", "action": "qqTest", "button": "测试配置" },
+        { "key": "__readonly.qq.webhook", "label": "Webhook 地址", "type": "readonly", "source": "qqWebhook" }
+      ]
+    },
+
+    {
+      "id": "accounts",
+      "title": "账号授权",
+      "description": "账号由你本人登录并授权；插件不代登录、不保存密码。会话失效或遇到验证码/风控时立即停止并提示。",
+      "fields": [
+        { "key": "__platforms.status", "label": "平台会话状态", "type": "platformStatus", "source": "accounts", "hint": "点击“检查会话”只做只读探测，不发起任何浏览行为。" },
+        { "key": "__action.accounts.check", "label": "检查会话", "type": "action", "action": "accountsCheck", "button": "检查全部" }
+      ]
+    },
+
+    {
+      "id": "llm",
+      "title": "模型",
+      "description": "用于画面理解、视频逐帧理解、知识抽取与自主决策。兼容 OpenAI Chat Completions。",
+      "fields": [
+        { "key": "llm.endpoint", "label": "Endpoint", "type": "text", "placeholder": "https://api.deepseek.com/v1" },
+        { "key": "llm.apiKey", "label": "API Key", "type": "password" },
+        { "key": "llm.model", "label": "文本模型", "type": "text", "placeholder": "deepseek-chat" },
+        { "key": "llm.visionModel", "label": "视觉模型", "type": "text", "placeholder": "留空则复用文本模型（需支持图片输入）" },
+        { "key": "llm.embedModel", "label": "Embedding 模型", "type": "text", "placeholder": "留空使用离线 hashEmbed" },
+        { "key": "llm.temperature", "label": "Temperature", "type": "range", "min": 0, "max": 1.5, "step": 0.1, "default": 0.7 },
+        { "key": "llm.timeoutSec", "label": "超时（秒）", "type": "number", "min": 10, "max": 300, "default": 60 },
+        { "key": "llm.maxTokens", "label": "最大输出 tokens", "type": "number", "min": 64, "max": 8192, "step": 64, "default": 1024 }
+      ]
+    },
+
+    {
+      "id": "advanced",
+      "title": "高级",
+      "description": "数据目录、日志与媒体工具。修改 dataDir 需要重启宿主。",
+      "fields": [
+        { "key": "dataDir", "label": "数据目录", "type": "text", "hint": "相对插件根目录或绝对路径；默认 data。变更需重启。" },
+        { "key": "logging.level", "label": "日志级别", "type": "select", "options": [{ "value": "debug", "label": "debug" }, { "value": "info", "label": "info" }, { "value": "warn", "label": "warn" }, { "value": "error", "label": "error" }], "default": "info" },
+        { "key": "logging.maxFileBytes", "label": "日志轮转大小", "type": "number", "min": 1048576, "max": 67108864, "step": 1048576, "default": 5242880 },
+        { "key": "logging.keepFiles", "label": "保留日志文件数", "type": "number", "min": 1, "max": 30, "default": 7 },
+        { "key": "logging.redact", "label": "日志脱敏", "type": "boolean", "default": true },
+        { "key": "logging.console", "label": "输出到控制台", "type": "boolean", "default": true },
+        { "key": "media.ffmpeg", "label": "ffmpeg 路径", "type": "text", "default": "ffmpeg" },
+        { "key": "media.ffprobe", "label": "ffprobe 路径", "type": "text", "default": "ffprobe" },
+        { "key": "media.maxConcurrent", "label": "并发视频任务", "type": "number", "min": 1, "max": 4, "default": 1 },
+        { "key": "video.downloadTimeoutSec", "label": "视频下载超时（秒）", "type": "number", "min": 30, "max": 900, "default": 300 },
+        { "key": "__action.selfcheck", "label": "运行自检", "type": "action", "action": "selfcheck", "button": "开始自检" },
+        { "key": "__readonly.status", "label": "运行状态", "type": "readonly", "source": "status" }
+      ]
+    }
+  ]
+}
