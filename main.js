@@ -32,7 +32,7 @@ import { createChatEnhance, registerChatEnhance } from './ui/chatEnhance.js';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url));
 export const name = 'shabi-plugin';
-export const version = '1.1.1';
+export const version = '1.1.2';
 // Cordis 的服务可见性：声明 tools 后，Web profile 才允许直接 ctx.tools.register。
 export const inject = ['tools'];
 

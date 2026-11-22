@@ -116,7 +116,8 @@ function renderNav() {
     a.innerHTML = `<span class="nav-dot"></span><span>${escapeHtml(g.title)}</span>`;
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      $(`#group-${g.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const target = $(`#group-${g.id}`);
+      if (target && contentEl) contentEl.scrollTo({ top: Math.max(0, target.offsetTop - 8), behavior: 'smooth' });
       $$('.nav a').forEach((x) => x.classList.remove('active'));
       a.classList.add('active');
     });
