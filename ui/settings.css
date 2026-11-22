@@ -260,3 +260,19 @@ td.mono { font-family: "SF Mono", ui-monospace, monospace; font-size: 11px; }
   .two-col { grid-template-columns: 1fr; }
   .group { border-radius: 12px; }
 }
+
+/* 嵌入 DSH Settings 时把侧栏变成顶部横向组导航，避免被 560px 宽的面板挤压。 */
+html.embedded .shell { display: block; height: 100vh; }
+html.embedded .sidebar {
+  display: flex; flex-direction: row; align-items: center;
+  height: auto; padding: 7px 10px; border-right: 0;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20;
+}
+html.embedded .brand, html.embedded .sidebar-foot { display: none; }
+html.embedded .nav { display: flex; gap: 6px; overflow-x: auto; padding: 0; }
+html.embedded .nav a { white-space: nowrap; padding: 6px 9px; font-size: 12px; border-radius: 8px; }
+html.embedded .main { height: calc(100vh - 48px); }
+html.embedded .content { padding: 14px 14px 92px; }
+html.embedded .topbar { padding-left: 14px; padding-right: 14px; }
+html.embedded .topbar h1 { font-size: 17px; }
+html.embedded .topbar p { display: none; }

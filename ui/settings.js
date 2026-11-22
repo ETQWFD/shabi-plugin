@@ -2,6 +2,8 @@
  * ui/settings.js — 沙币设置页前端。
  * 零依赖、离线可用；所有配置通过 /shabi/api 读写。
  */
+if (window.self !== window.top) document.documentElement.classList.add('embedded');
+
 const API_BASE = window.__SHABI_API_BASE__ || '/shabi/api';
 
 const state = {
