@@ -48,5 +48,7 @@
 - [x] `node main.js selfcheck` 通过（独立模式 HTTP 路由为提示）
 - [x] 设置页 12 组字段保存/读取
 - [x] `dsh.bundle.patch`、`engines.dsh >=0.2.0`、纯 ESM、无 `prepare`
-- [ ] GitHub 仓库创建与推送（受连接器授权状态影响）
-- [ ] 在真实 DSH profile 中 `add github:...` / 本地路径安装后的 `--dump-config` 验证
+- [x] GitHub 仓库创建与推送：<https://github.com/ETQWFD/shabi-plugin>（`main`）
+- [x] 真实 DSH 0.2.2-rc.5 profile：本地路径 `add` 成功，`--dump-config` 出现 `id: shabi` 组合包层
+- [x] 真实 DSH headless 启动：插件挂载与卸载正常；dummy API key 仅导致模型 401
+- [x] 全量测试 25/25 通过（含真实 FFmpeg 视频与 QQ 验签）

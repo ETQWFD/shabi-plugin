@@ -140,7 +140,7 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
 export function apply(ctx, config = {}) {
   const boot = () => createShabiPlugin({ ctx, rawHost: ctx, config }).then((app) => {
     try { ctx.shabi = app; } catch { /* context may be sealed */ }
-    safeLog(ctx.logger, 'info', '沙币插件已挂载（DSH）');
+    safeLog(resolveService(ctx, 'logger'), 'info', '沙币插件已挂载（DSH）');
     return app;
   });
 
@@ -150,7 +150,7 @@ export function apply(ctx, config = {}) {
       const ready = boot()
         .then((a) => { app = a; })
         .catch((err) => {
-          safeLog(ctx.logger, 'error', `沙币插件启动失败：${err.message}`);
+          safeLog(resolveService(ctx, 'logger'), 'error', `沙币插件启动失败：${err.message}`);
           console.error('[shabi-plugin] 启动失败', err);
         });
       return async () => {
@@ -165,33 +165,66 @@ export function apply(ctx, config = {}) {
 
 // ───────────────────────── DSH 适配 ─────────────────────────
 
+function resolveService(ctx, name) {
+  if (!ctx || !name) return undefined;
+  try {
+    if (typeof ctx.get === 'function') {
+      const value = ctx.get(name, false);
+      if (value !== undefined) return value;
+    }
+  } catch { /* service not ready or context sealed */ }
+  try {
+    return ctx[name];
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeRawHost(raw = {}, ctx = null) {
   const out = { ...raw };
   if (!ctx) return out;
-  if (!out.screen && ctx.screen) out.screen = ctx.screen;
-  if (!out.vision && ctx.vision) out.vision = ctx.vision;
-  if (!out.llm && typeof ctx.llm?.chat === 'function') out.llm = ctx.llm;
-  if (!out.media && ctx.media) out.media = ctx.media;
-  if (!out.secrets && ctx.secrets) out.secrets = ctx.secrets;
-  if (!out.accounts && ctx.accounts) out.accounts = ctx.accounts;
-  if (!out.content && ctx.content) out.content = ctx.content;
-  if (!out.input && ctx.input) out.input = ctx.input;
+  const services = {
+    screen: resolveService(ctx, 'screen'),
+    vision: resolveService(ctx, 'vision'),
+    llm: resolveService(ctx, 'llm'),
+    media: resolveService(ctx, 'media'),
+    secrets: resolveService(ctx, 'secrets'),
+    accounts: resolveService(ctx, 'accounts'),
+    content: resolveService(ctx, 'content'),
+    input: resolveService(ctx, 'input'),
+    ui: resolveService(ctx, 'ui'),
+    chat: resolveService(ctx, 'chat'),
+    http: resolveService(ctx, 'http'),
+    logger: resolveService(ctx, 'logger'),
+  };
+  if (!out.screen && services.screen) out.screen = services.screen;
+  if (!out.vision && services.vision) out.vision = services.vision;
+  if (!out.llm && typeof services.llm?.chat === 'function') out.llm = services.llm;
+  if (!out.media && services.media) out.media = services.media;
+  if (!out.secrets && services.secrets) out.secrets = services.secrets;
+  if (!out.accounts && services.accounts) out.accounts = services.accounts;
+  if (!out.content && services.content) out.content = services.content;
+  if (!out.input && services.input) out.input = services.input;
 
   if (!out.ui) {
     const ui = {};
-    if (typeof ctx.ui?.notify === 'function') ui.notify = (text, meta) => ctx.ui.notify(text, meta);
-    else if (typeof ctx.notify === 'function') ui.notify = (text, meta) => ctx.notify(text, meta);
-    else if (typeof ctx.logger?.info === 'function') ui.notify = (text, meta) => ctx.logger.info(text, meta);
-    if (typeof ctx.ui?.confirm === 'function') ui.confirm = (req) => ctx.ui.confirm(req);
-    else if (typeof ctx.confirm === 'function') ui.confirm = (req) => ctx.confirm(req);
-    if (typeof ctx.ui?.emit === 'function') ui.emit = (event, payload) => ctx.ui.emit(event, payload);
-    else if (typeof ctx.emit === 'function') ui.emit = (event, payload) => ctx.emit(event, payload);
+    const uiService = services.ui;
+    const notifyFn = uiService?.notify || resolveService(ctx, 'notify');
+    const confirmFn = uiService?.confirm || resolveService(ctx, 'confirm');
+    const emitFn = uiService?.emit || resolveService(ctx, 'emit');
+    if (typeof notifyFn === 'function') ui.notify = (text, meta) => notifyFn(text, meta);
+    else if (typeof services.logger?.info === 'function') ui.notify = (text, meta) => services.logger.info(text, meta);
+    if (typeof confirmFn === 'function') ui.confirm = (req) => confirmFn(req);
+    if (typeof emitFn === 'function') ui.emit = (event, payload) => emitFn(event, payload);
     if (Object.keys(ui).length) out.ui = ui;
   }
-  if (!out.chat && typeof ctx.chat?.send === 'function') out.chat = ctx.chat;
+  if (!out.chat && typeof services.chat?.send === 'function') out.chat = services.chat;
 
   out.http = out.http || {};
-  if (!out.http.request && typeof ctx.http?.request === 'function') out.http.request = (url, opts) => ctx.http.request(url, opts);
+  const httpService = services.http;
+  if (!out.http.request && typeof httpService?.request === 'function') {
+    out.http.request = (url, opts) => httpService.request(url, opts);
+  }
   if (!out.http.registerRoute) {
     const registrar = findRouteRegistrar(ctx);
     if (registrar) out.http.registerRoute = registrar;
@@ -200,13 +233,18 @@ function normalizeRawHost(raw = {}, ctx = null) {
 }
 
 function findRouteRegistrar(ctx) {
+  const http = resolveService(ctx, 'http');
+  const webServer = resolveService(ctx, 'webServer');
+  const server = resolveService(ctx, 'server');
+  const webApp = resolveService(ctx, 'webApp');
+  const router = resolveService(ctx, 'router');
   const candidates = [
-    [ctx.http, 'registerRoute'], [ctx.http, 'route'],
-    [ctx.webServer, 'registerRoute'], [ctx.webServer, 'route'],
-    [ctx.server, 'registerRoute'], [ctx.server, 'route'],
-    [ctx.webApp, 'registerRoute'], [ctx.webApp, 'route'],
-    [ctx.webApp?.server, 'registerRoute'],
-    [ctx.router, 'register'], [ctx.router, 'registerRoute'],
+    [http, 'registerRoute'], [http, 'route'],
+    [webServer, 'registerRoute'], [webServer, 'route'],
+    [server, 'registerRoute'], [server, 'route'],
+    [webApp, 'registerRoute'], [webApp, 'route'],
+    [webApp?.server, 'registerRoute'],
+    [router, 'register'], [router, 'registerRoute'],
   ];
   for (const [obj, method] of candidates) {
     if (obj && typeof obj[method] === 'function') {
@@ -264,8 +302,9 @@ function attachCordis(app, ctx) {
     } catch (err) {
       app.logger.warn('工具注册注入失败', { error: err.message });
     }
-  } else if (ctx.tools) {
-    registerTools(app, ctx).catch((err) => app.logger.warn('工具注册失败', { error: err.message }));
+  } else {
+    const tools = resolveService(ctx, 'tools');
+    if (tools) registerTools(app, { tools }).catch((err) => app.logger.warn('工具注册失败', { error: err.message }));
   }
 }
 

@@ -140,6 +140,14 @@ node main.js video /path/to/video.mp4 hybrid
 
 测试覆盖：IOSHB 往返/CRC/备份恢复、记忆写读/遗忘/归档/唤醒/压缩/INI/删除不复活、人格与硬约束、安全路径/确认 token/回滚、知识抽取/证据/去重、真实 FFmpeg 视频覆盖率/每秒 segment/断点、图片 API 成功/失败/AI 标注、QQ 验签/去重/限频、自主循环冷却/限额、兴趣反馈/风控停止、眼睛隐私/降级。
 
+当前验证记录（2026-11-22）：
+
+- `npm test`：**25/25 通过**（含真实 FFmpeg 4 秒视频流水线、知识证据/去重、图片成功与失败降级、QQ Ed25519 验签/去重/限频、自主确认/拒绝、兴趣风控停止、眼睛视觉归一化）。
+- 真实 DSH `0.2.2-rc.5`：`dsh plugin --profile headless add <本插件>` 成功，`--dump-config` 出现 `# == shabi-plugin / id: shabi` 层。
+- 真实 DSH headless 启动：日志出现“沙币插件已启动”，退出时“沙币插件已卸载”；仅因使用 dummy `DEEPSEEK_API_KEY` 触发模型 401，不是插件错误。
+- GitHub：<https://github.com/ETQWFD/shabi-plugin>，默认分支 `main`。
+
+
 ## 目录
 
 ```

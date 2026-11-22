@@ -88,11 +88,17 @@ export function createChatEnhance(app) {
 export function registerChatEnhance(app, ctx) {
   const disposers = [];
   const hooks = app.chatEnhance;
+  let chat = null;
   try {
-    if (typeof ctx.chat?.onBeforeSend === 'function') {
-      disposers.push(ctx.chat.onBeforeSend(async (payload) => hooks.beforeSend(payload)));
-    } else if (typeof ctx.chat?.beforeSend === 'function') {
-      disposers.push(ctx.chat.beforeSend(async (payload) => hooks.beforeSend(payload)));
+    chat = typeof ctx.get === 'function' ? ctx.get('chat', false) : ctx.chat;
+  } catch {
+    chat = null;
+  }
+  try {
+    if (typeof chat?.onBeforeSend === 'function') {
+      disposers.push(chat.onBeforeSend(async (payload) => hooks.beforeSend(payload)));
+    } else if (typeof chat?.beforeSend === 'function') {
+      disposers.push(chat.beforeSend(async (payload) => hooks.beforeSend(payload)));
     } else if (typeof ctx.on === 'function') {
       const handler = async (payload) => hooks.beforeSend(payload);
       ctx.on('chat:before-send', handler);

@@ -319,6 +319,7 @@ export class KnowledgeEngine {
   }
 
   async writeKnowledge(item, { videoId } = {}) {
+    const confidence = clamp(Number(item.confidence ?? 0), 0, 1);
     const evidence = mergeEvidence(
       item.evidence || [],
       [{ videoId: videoId || item.evidence?.[0]?.videoId, start: item.start ?? item.evidence?.[0]?.start ?? 0, end: item.end ?? item.evidence?.[0]?.end ?? 0, knowledgeId: item.id }],
@@ -329,14 +330,14 @@ export class KnowledgeEngine {
       content: [
         item.content,
         item.entities?.length ? `实体：${item.entities.join('、')}` : '',
-        `类型：${item.type}；置信度：${item.confidence.toFixed(2)}${item.conflict ? '；存在冲突说法' : ''}`,
+        `类型：${item.type}；置信度：${confidence.toFixed(2)}${item.conflict ? '；存在冲突说法' : ''}`,
       ].filter(Boolean).join('\n'),
-      importance: clamp(0.35 + item.confidence * 0.5, 0, 1),
+      importance: clamp(0.35 + confidence * 0.5, 0, 1),
       tags: Array.from(new Set([...(item.tags || []), ...(item.entities || [])])).slice(0, 16),
       emotion: 'neutral',
       source: { kind: 'video', videoId: videoId || item.evidence?.[0]?.videoId, knowledgeId: item.id },
       evidence,
-      strength: 0.7 + item.confidence * 0.3,
+      strength: 0.7 + confidence * 0.3,
     });
     const record = {
       knowledgeId: item.id,
@@ -346,7 +347,7 @@ export class KnowledgeEngine {
       end: item.end ?? evidence[0]?.end ?? 0,
       type: item.type,
       title: textSummary(item.content, 60),
-      confidence: item.confidence,
+      confidence,
       createdAt: nowIso(),
     };
     this.index.items.push(record);
