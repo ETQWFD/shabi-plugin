@@ -23,6 +23,7 @@ import { Eye } from './core/eye.js';
 import { VideoAnalyzer } from './core/videoAnalyzer.js';
 import { KnowledgeEngine } from './core/knowledge.js';
 import { InterestEngine } from './core/interest.js';
+import { ContentHub } from './core/content.js';
 import { ImageApi } from './core/imageApi.js';
 import { QQBot } from './core/qqBot.js';
 import { DecisionEngine } from './core/decision.js';
@@ -31,7 +32,9 @@ import { createChatEnhance, registerChatEnhance } from './ui/chatEnhance.js';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url));
 export const name = 'shabi-plugin';
-export const version = '1.0.0';
+export const version = '1.1.0';
+// Cordis 的服务可见性：声明 tools 后，Web profile 才允许直接 ctx.tools.register。
+export const inject = ['tools'];
 
 /**
  * 创建插件实例（不依赖 Cordis，可直接在测试/CLI 中使用）。
@@ -77,6 +80,8 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
     await app.knowledge.init();
     app.interest = new InterestEngine(app);
     await app.interest.init();
+    app.content = new ContentHub(app);
+    await app.content.init();
     app.imageApi = new ImageApi(app);
     await app.imageApi.init();
     app.qq = new QQBot(app);
@@ -238,9 +243,16 @@ function findRouteRegistrar(ctx) {
   const server = resolveService(ctx, 'server');
   const webApp = resolveService(ctx, 'webApp');
   const router = resolveService(ctx, 'router');
+  // DSH Web 的真实接口是 ctx.webServer.register({kind,path,handler})。
+  // 兼容旧实现里常见的 registerRoute/route 两种形状。
+  if (webServer && typeof webServer.register === 'function') {
+    return (routePath, handler, kind = 'exact') => {
+      const clean = String(routePath || '').replace(/\/+$/, '') || '/';
+      return webServer.register({ kind, path: clean, handler: wrapNodeHandler(handler) });
+    };
+  }
   const candidates = [
     [http, 'registerRoute'], [http, 'route'],
-    [webServer, 'registerRoute'], [webServer, 'route'],
     [server, 'registerRoute'], [server, 'route'],
     [webApp, 'registerRoute'], [webApp, 'route'],
     [webApp?.server, 'registerRoute'],
@@ -258,14 +270,15 @@ function findRouteRegistrar(ctx) {
 function wrapNodeHandler(handler) {
   return async (req, res) => {
     const normalized = normalizeRequest(req);
+    normalized.body = await readRequestBody(req, normalized.method, normalized.body);
     const result = await handler(normalized);
     if (res && typeof res.setHeader === 'function') {
       const status = result?.status || 200;
       res.statusCode = status;
       for (const [k, v] of Object.entries(result?.headers || {})) res.setHeader(k, v);
       if (!res.getHeader('content-type')) res.setHeader('content-type', 'application/json; charset=utf-8');
-      const body = result?.body === undefined ? '' : typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
-      res.end(body);
+      const body = result?.body === undefined ? '' : typeof result.body === 'string' ? result.body : Buffer.isBuffer(result.body) ? result.body : JSON.stringify(result.body);
+      res.end(req?.method === 'HEAD' ? undefined : body);
       return undefined;
     }
     if (res && typeof res.code === 'function' && typeof res.send === 'function') {
@@ -276,6 +289,29 @@ function wrapNodeHandler(handler) {
     }
     return result;
   };
+}
+
+/**
+ * 兼容 DSH Web 的 Node IncomingMessage 与 Fetch Request：
+ * 读取 POST JSON 请求体。已经解析过的 body 直接返回。
+ */
+async function readRequestBody(req, method, existing) {
+  if (existing !== undefined) return existing;
+  if (method === 'GET' || method === 'HEAD') return undefined;
+  if (req && typeof req.json === 'function') {
+    try { return await req.json(); } catch { return undefined; }
+  }
+  const stream = req?.raw && typeof req.raw.on === 'function' ? req.raw : req;
+  if (!stream || typeof stream.on !== 'function') return undefined;
+  const chunks = [];
+  try {
+    for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  } catch {
+    return undefined;
+  }
+  const text = Buffer.concat(chunks).toString('utf8').trim();
+  if (!text) return undefined;
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 function normalizeRequest(req) {
@@ -296,15 +332,53 @@ function normalizeRequest(req) {
 }
 
 function attachCordis(app, ctx) {
-  if (typeof ctx.inject === 'function') {
+  // 与 DSH 官方工具插件一致：直接读 ctx.tools。ctx.inject 在 Web 启动阶段
+  // 可能因为服务时序抛错，不能当成唯一入口。
+  const tools = resolveService(ctx, 'tools');
+  if (tools) {
+    registerTools(app, { tools }).catch((err) => app.logger.warn('工具注册失败', { error: err.message }));
+  } else if (typeof ctx.inject === 'function') {
     try {
       ctx.inject(['tools'], (toolsCtx) => registerTools(app, toolsCtx));
     } catch (err) {
-      app.logger.warn('工具注册注入失败', { error: err.message });
+      app.logger.warn('工具注册注入失败', { error: err.stack || err.message });
     }
-  } else {
-    const tools = resolveService(ctx, 'tools');
-    if (tools) registerTools(app, { tools }).catch((err) => app.logger.warn('工具注册失败', { error: err.message }));
+  }
+
+  // 在 DSH Web 首页注入一个明确入口，保证设置页不是“藏在端口里的独立页面”。
+  try {
+    if (typeof ctx.on === 'function') {
+      const inject = (table) => {
+        table.push({
+          kind: 'script', placement: 'body', text: `(() => {
+  const ID = 'shabi-settings-entry';
+  const add = () => {
+    if (!document.body || document.getElementById(ID)) return;
+    const a = document.createElement('a');
+    a.id = ID;
+    a.href = '/shabi/settings';
+    a.textContent = '沙币设置';
+    a.title = '打开沙币设置：眼睛、B站/小说、视频学习、记忆与人格';
+    Object.assign(a.style, {
+      position: 'fixed', right: '18px', bottom: '18px', zIndex: '2147483000',
+      padding: '10px 14px', borderRadius: '12px', textDecoration: 'none',
+      font: '600 13px/1.2 system-ui, -apple-system, sans-serif',
+      color: '#fff', background: '#111827', boxShadow: '0 8px 24px rgba(0,0,0,.28)'
+    });
+    document.body.appendChild(a);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', add, { once: true });
+  else add();
+  const timer = setInterval(() => { add(); if (document.getElementById(ID)) clearInterval(timer); }, 1000);
+  setTimeout(() => clearInterval(timer), 15000);
+})();`,
+        });
+      };
+      const off = ctx.on('webserver/index-inject', inject);
+      if (typeof off === 'function') app.disposers.push(off);
+    }
+  } catch (err) {
+    app.logger.debug?.('Web 入口注入不可用（可能不是 Web profile）', { error: err.message });
   }
 }
 
@@ -312,12 +386,7 @@ function attachCordis(app, ctx) {
 
 async function registerTools(app, ctx) {
   if (!ctx?.tools?.register || app.disposed) return;
-  let defineTool = null;
-  try {
-    ({ defineTool } = await import('@deepseek-ai/dsh-tools'));
-  } catch {
-    // 非 DSH 运行环境：使用普通对象注册
-  }
+  const failures = [];
   const tools = [
     {
       name: 'shabi_screen',
@@ -436,6 +505,29 @@ async function registerTools(app, ctx) {
       },
     },
     {
+      name: 'shabi_content',
+      description: '内容执行层：刷 B 站推荐、学一条 B 站视频、打开/翻页/学习小说。使用用户本人登录 Cookie，遇风控立即停止。',
+      parameters: {
+        action: { type: 'string', required: true, description: 'feed/next/bilibiliLearn/novelOpen/novelNext/novelLearn/learnText' },
+        bvid: { type: 'string', description: 'B 站 BV 号或视频链接' },
+        url: { type: 'string', description: '小说页面地址' },
+        text: { type: 'string', description: 'learnText 的文本' },
+        title: { type: 'string', description: 'learnText 的标题' },
+        limit: { type: 'number', description: '推荐条数，默认 12' },
+      },
+      output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
+      async execute(args) {
+        if (args.action === 'feed') return JSON.stringify(await app.content.bilibiliFeed({ limit: args.limit, fresh: true }), null, 2);
+        if (args.action === 'next') return JSON.stringify(await app.content.bilibiliNext({ limit: args.limit }), null, 2);
+        if (args.action === 'bilibiliLearn') return JSON.stringify(await app.content.bilibiliLearn(args.bvid || args.url), null, 2);
+        if (args.action === 'novelOpen') return JSON.stringify(await app.content.novelOpen(args.url), null, 2);
+        if (args.action === 'novelNext') return JSON.stringify(await app.content.novelNext(), null, 2);
+        if (args.action === 'novelLearn') return JSON.stringify(await app.content.novelLearn(), null, 2);
+        if (args.action === 'learnText') return JSON.stringify(await app.content.learnText({ title: args.title || '文本学习', text: args.text || '', source: 'tool', tags: ['学习'] }), null, 2);
+        return '未知 action';
+      },
+    },
+    {
       name: 'shabi_status',
       description: '查看沙币的宿主能力、记忆、视频、人格、自主循环与 QQ 连接状态。',
       parameters: {},
@@ -448,27 +540,86 @@ async function registerTools(app, ctx) {
 
   for (const tool of tools) {
     try {
-      const def = defineTool ? defineTool(tool) : tool;
-      ctx.tools.register(def);
+      const def = withJsonSchema(tool);
+      const dispose = ctx.tools.register(def);
+      if (typeof dispose === 'function') app.disposers.push(dispose);
     } catch (err) {
       app.logger.warn('工具注册失败', { tool: tool.name, error: err.message });
+      failures.push(tool.name);
     }
   }
+  app.logger.info('工具注册完成', { registered: tools.length - failures.length, total: tools.length, failures });
+}
+
+/**
+ * 把插件内部的简易参数描述转成 DSH ToolsService 能接受、可投影的 JSON Schema。
+ * 这样不需要在插件包里硬依赖 @deepseek-ai/dsh-tools，也能在 Web/headless 使用。
+ */
+function withJsonSchema(tool) {
+  if (tool.parameters && tool.parameters.type === 'object' && tool.parameters.properties) return tool;
+  const properties = {};
+  const required = [];
+  for (const [key, spec] of Object.entries(tool.parameters || {})) {
+    const item = { type: spec.type || 'string' };
+    if (spec.description) item.description = spec.description;
+    if (spec.additionalProperties !== undefined) item.additionalProperties = spec.additionalProperties;
+    if (spec.type === 'object') item.additionalProperties = spec.additionalProperties ?? true;
+    properties[key] = item;
+    if (spec.required) required.push(key);
+  }
+  return {
+    ...tool,
+    parameters: {
+      type: 'object',
+      properties,
+      ...(required.length ? { required } : {}),
+      additionalProperties: false,
+    },
+  };
 }
 
 // ───────────────────────── HTTP 设置 API ─────────────────────────
 
 function setupApiRoutes(app) {
   const disposers = [];
-  const register = (routePath, handler) => {
+  const register = (routePath, handler, kind = 'exact') => {
     try {
-      const disposer = app.host.http.registerRoute(routePath, safeHandler(app, handler));
+      if (!app.host.http.registerRoute) {
+        app.logger.debug?.('当前 profile 没有 HTTP 服务，设置页将在独立 dev-server 中运行');
+        return;
+      }
+      const disposer = app.host.http.registerRoute(routePath, safeHandler(app, handler), kind);
       if (typeof disposer === 'function') disposers.push(disposer);
       else if (disposer) disposers.push(() => {});
     } catch (err) {
       app.logger.warn('注册设置 API 失败', { path: routePath, error: err.message });
     }
   };
+
+  register('/shabi/settings', async (req) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json(405, { ok: false, error: 'method not allowed' });
+    let html = await fs.readFile(path.join(app.root, 'ui', 'settings.html'), 'utf8');
+    html = html.replace('<head>', '<head>\n  <base href="/shabi/ui/" />');
+    return { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, body: html };
+  });
+
+  register('/shabi/ui', async (req) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json(405, { ok: false, error: 'method not allowed' });
+    const pathname = req.path || new URL(String(req.url || '/'), 'http://localhost').pathname;
+    const encoded = String(pathname).replace(/^\/shabi\/ui\/?/, '');
+    let rel = '';
+    try { rel = decodeURIComponent(encoded); } catch { return json(400, { ok: false, error: 'bad path' }); }
+    if (!rel || rel.includes('..') || rel.startsWith('/') || rel.includes('\\')) return json(404, { ok: false, error: 'not found' });
+    const file = path.join(app.root, 'ui', rel);
+    const mime = mimeForUi(file);
+    if (!mime) return json(404, { ok: false, error: 'not found' });
+    try {
+      const body = await fs.readFile(file);
+      return { status: 200, headers: { 'content-type': mime, 'cache-control': 'no-store' }, body };
+    } catch {
+      return json(404, { ok: false, error: 'not found' });
+    }
+  }, 'prefix');
 
   register('/shabi/api/settings', async (req) => {
     if (req.method === 'GET') {
@@ -479,6 +630,19 @@ function setupApiRoutes(app) {
   });
 
   register('/shabi/api/status', async () => json({ ok: true, status: buildStatus(app) }));
+
+  register('/shabi/api/eye', async (req) => {
+    if (req.method === 'GET') return json({ ok: true, eye: app.eye.getStatus() });
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+    const action = req.body?.action || 'test';
+    if (action === 'pause') return json({ ok: true, result: app.eye.pause('settings') });
+    if (action === 'resume') return json({ ok: true, result: app.eye.resume() });
+    if (action === 'test') {
+      const context = await app.eye.getScreenContext({ force: true });
+      return json({ ok: Boolean(context), result: context, error: context ? null : '眼睛当前暂停，或没有拿到屏幕内容' });
+    }
+    return json(400, { ok: false, error: '未知 action' });
+  });
 
   register('/shabi/api/memory', async (req) => {
     if (req.method === 'GET') return memoryList(app, req.query);
@@ -504,6 +668,8 @@ function setupApiRoutes(app) {
     }
     return json(400, { ok: false, error: '未知 action' });
   });
+
+  register('/shabi/api/content', async (req) => contentApi(app, req));
 
   register('/shabi/api/video', async (req) => videoApi(app, req));
 
@@ -678,6 +844,7 @@ function buildStatus(app) {
     autonomy: app.autonomy.getStatus(),
     qq: app.qq.getStatus(),
     interest: app.interest.getStatus(),
+    content: app.content?.getStatus?.(),
     safety: app.safety.getStatus(),
     personalities: app.personality.listPersonalities(),
     accounts: app.config.accounts?.platforms || [],
@@ -749,6 +916,30 @@ async function personalityApi(app, req) {
     await saveConfig(app.config, { crypto: app.crypto, logger: app.logger });
     return json({ ok: true, personality: p });
   }
+  return json(400, { ok: false, error: '未知 action' });
+}
+
+async function contentApi(app, req) {
+  if (req.method === 'GET') {
+    if (req.query.action === 'feed') return json({ ok: true, ...(await app.content.bilibiliFeed({ limit: req.query.limit })) });
+    if (req.query.action === 'next') return json({ ok: true, ...(await app.content.bilibiliNext({ limit: req.query.limit })) });
+    if (req.query.action === 'novel') {
+      if (!app.content.state.novel?.current) return json({ ok: false, error: '还没有打开小说' });
+      const cur = app.content.state.novel.current;
+      const page = await fs.readFile(cur.file, 'utf8').then(JSON.parse).catch(() => null);
+      return page ? json({ ok: true, ...page }) : json(404, { ok: false, error: '小说缓存丢失' });
+    }
+    return json({ ok: true, status: app.content.getStatus() });
+  }
+  if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+  const { action } = req.body || {};
+  if (action === 'feed') return json({ ok: true, ...(await app.content.bilibiliFeed({ limit: req.body.limit, fresh: true })) });
+  if (action === 'next') return json({ ok: true, ...(await app.content.bilibiliNext({ limit: req.body.limit })) });
+  if (action === 'bilibiliLearn') return json({ ok: true, ...(await app.content.bilibiliLearn(req.body.bvid || req.body.url, { download: req.body.download })) });
+  if (action === 'novelOpen') return json({ ok: true, ...(await app.content.novelOpen(req.body.url)) });
+  if (action === 'novelNext') return json({ ok: true, ...(await app.content.novelNext()) });
+  if (action === 'novelLearn') return json({ ok: true, ...(await app.content.novelLearn()) });
+  if (action === 'learnText') return json({ ok: true, ...(await app.content.learnText(req.body)) });
   return json(400, { ok: false, error: '未知 action' });
 }
 
@@ -875,6 +1066,21 @@ function mimeFor(file) {
   return {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
     '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
+  }[ext] || null;
+}
+
+function mimeForUi(file) {
+  const ext = path.extname(String(file)).toLowerCase();
+  return {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
   }[ext] || null;
 }
 

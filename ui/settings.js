@@ -920,6 +920,43 @@ async function runAction(action, btn) {
     } else if (action === 'accountsCheck') {
       for (const p of state.accounts) await checkPlatform(p.platform);
       toast('授权状态已刷新', 'ok');
+    } else if (action === 'eyeTest') {
+      const data = await api('/eye', { method: 'POST', body: { action: 'test' }, allowFail: true });
+      if (!data.ok || !data.result) throw new Error(data.error || '没有拿到屏幕内容');
+      showResultModal('眼睛测试', data.result, true);
+    } else if (action === 'eyeToggle') {
+      const paused = Boolean(state.status?.eye?.paused);
+      await api('/eye', { method: 'POST', body: { action: paused ? 'resume' : 'pause' } });
+      const data = await api('/status');
+      state.status = data.status || state.status;
+      updateStatus();
+      toast(paused ? '屏幕识别已恢复' : '屏幕识别已暂停', 'ok');
+    } else if (action === 'contentFeed') {
+      const data = await api('/content', { method: 'POST', body: { action: 'next' }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '没有刷到 B 站内容');
+      showResultModal('B 站推荐', data.pick || data, true);
+      if (data.pick?.url) {
+        const open = document.createElement('button');
+        open.className = 'btn small primary';
+        open.textContent = '在浏览器打开';
+        open.onclick = () => window.open(data.pick.url, '_blank', 'noopener');
+        $('#modalFoot')?.appendChild(open);
+      }
+    } else if (action === 'contentNovel') {
+      let url = state.config?.content?.novel?.defaultUrl || '';
+      if (!url) {
+        url = await askText('打开小说', '输入小说页面地址（https://…）');
+        if (url === null) return;
+      }
+      const data = await api('/content', { method: 'POST', body: { action: 'novelOpen', url }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '打开失败');
+      showResultModal('小说阅读', { title: data.title, chars: data.chars, paragraphs: data.paragraphs?.slice(0, 6), chapterLinks: data.chapterLinks?.slice(0, 12) }, true);
+    } else if (action === 'contentLearn') {
+      const target = await askText('学习 B 站视频', '输入 BV 号或视频链接');
+      if (target === null) return;
+      const data = await api('/content', { method: 'POST', body: { action: 'bilibiliLearn', bvid: target }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '学习失败');
+      showResultModal('学习完成', { title: data.title, mode: data.mode, summary: data.summary, notes: data.notes, memoryIds: data.memoryIds }, true);
     } else if (action === 'selfcheck') {
       const data = await api('/selfcheck', { method: 'POST', allowFail: true });
       showSelfcheck(data.report || data);

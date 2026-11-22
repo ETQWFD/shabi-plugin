@@ -148,7 +148,7 @@ export class Eye {
     if (this.config.ocr?.enabled !== false) {
       try {
         ocr = await withTimeout(
-          this.host.screen.ocr(analysisPath, { lang: this.config.ocr?.lang || ['chi_sim', 'eng'] }),
+          this.host.screen.ocr(analysisPath, { lang: this.config.ocr?.languages || ['chi_sim', 'eng'] }),
           30000,
           'OCR',
         );

@@ -1,6 +1,6 @@
 # 沙币（shabi-plugin）
 
-> 带眼睛、长期记忆、人格、自主循环、AI 自拍与 QQ 官方机器人的 DSH 桌面插件。
+> 带眼睛、长期记忆、人格、自主循环、AI 自拍、B 站/小说内容源与 QQ 官方机器人的 DSH 插件。
 
 沙币运行在 [DSH（DeepSeek Harness）](https://github.com/deepseek-ai/dsh) 的 Cordis 插件体系中。所有业务能力都通过统一的 `host` 能力总线访问宿主；缺少截屏、视觉或媒体能力时会降级，不会让宿主崩溃。
 
@@ -8,13 +8,14 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| 眼睛 | 定时截屏、OCR、视觉理解，输出 `{app, window, text, scene, elements, timestamp}`；支持暂停、窗口白名单、敏感区域模糊、失败退避。 |
+| 眼睛 | 定时截屏、OCR、视觉理解，输出 `{app, window, text, scene, elements, timestamp}`；宿主没有 `screen.capture` 时自动探测 Linux/macOS/Windows 本机截屏，OCR 自动探测 Tesseract；支持暂停、窗口白名单、敏感区域模糊、失败退避。 |
 | 视频完整看 | 0–2 分钟视频逐帧/关键帧/混合抽帧，FFmpeg 解码，逐帧视觉理解，ASR/字幕，1 秒级时间轴，场景/事件，覆盖率 ≥99.9%，断点续看。 |
 | 知识 | 从时间轴、画面文字抽取概念/步骤/事实/观点/数据/示例；向量去重、冲突标记、置信度评分、跨视频验证、知识图谱。 |
 | 长期记忆 | IOSHB1 分卷、AES-256-GCM、遗忘曲线、归档/压缩/“突然记起来”、INI 导出。 |
 | 人格 | 内置傲娇/温柔/毒舌/冷静/元气，支持自定义；人格不能覆盖安全硬约束。 |
 | 自主循环 | 感知 → 记忆 → 决策 → 白名单动作 → 审计 → 冷却；每日/每小时上限、安静时段、二次确认。 |
 | 兴趣选片 | 观看/收藏/聊天/知识构建偏好，兴趣 + 新鲜度 + 多样性 + epsilon-greedy/UCB。 |
+| 内容源 | 用户本人 Cookie 下刷 B 站推荐、按 BV 号学字幕/简介、打开并翻页阅读小说；遇 403/412/风控立即停止。 |
 | 桌面协助 | 解释当前屏幕、提醒待办、引用记忆、知识回馈。 |
 | AI 自拍 | OpenAI 兼容 / 通用 JSON / SD WebUI，4 张人物参考图，失败固定“拍糊了，等会儿再拍。”，成功标注“（AI 生成）”。 |
 | QQ 官方机器人 | Webhook（Ed25519 验签）/ WebSocket，@ 消息去重、限频、复用记忆与人格；不实现个人号自动化。 |
@@ -28,8 +29,8 @@
 # 先安装官方 DSH CLI
 npm install -g @deepseek-ai/dsh
 
-# 添加插件（把 <profile> 换成你的 profile 名称，如 tui）
-dsh plugin --profile <profile> add github:ETQWFD/shabi-plugin
+# 添加插件（把 <profile> 换成你的 profile 名称，如 web / tui）
+dsh plugin --profile web add github:ETQWFD/shabi-plugin
 
 # 验证组合包层
 dsh --profile <profile> --dump-config
@@ -44,6 +45,15 @@ dsh --profile <profile> --dump-config
 ```
 
 > 如果宿主提示“这个包没有声明组合包”，请确认 `package.json` 中有 `dsh.bundle.patch`，且 `engines.dsh` 为 `>=0.2.0`。本仓库已经声明；git 安装不会执行 `prepare`，项目保持纯 JS/ESM。
+
+### 在 DSH Web 中打开设置
+
+安装并启动 `web` profile 后，有两种入口：
+
+1. **DSH 设置页**：左下角账号菜单 → **Settings** → 左侧 **沙币**。
+2. **页面右下角悬浮按钮**：**沙币设置**；或直接访问 `http://127.0.0.1:<端口>/shabi/settings`。
+
+设置页会加载完整 schema（眼睛、视频、B 站/小说/学习、自主、人格、自拍、记忆、安全、隐私、QQ、账号、模型、高级）。POST 保存走 `/shabi/api/settings`，立即生效；`dataDir` 修改需重启。
 
 ### 从本地目录安装（开发/未发布时）
 
@@ -60,13 +70,13 @@ npm start
 # 打开 http://127.0.0.1:3579/shabi/settings
 ```
 
-独立模式只用于查看/保存配置、测试 API；截屏、LLM、知识抽取等完整能力需要 DSH 宿主提供对应服务。
+独立模式只用于查看/保存配置、测试 API；截屏、LLM、知识抽取等完整能力在 DSH Web profile 中启用。`web` profile 的真实路由和设置 section 已在 DSH `0.2.2-rc.5` 验证。
 
 ## 依赖与权限
 
 - Node.js **>=22**（使用全局 `fetch`、`WebSocket`）。
 - `ffmpeg` / `ffprobe` 在 `PATH` 中，或在设置里填写绝对路径。
-- 可选：Tesseract（OCR）、Whisper/faster-whisper（ASR）。没有时自动降级。
+- 可选：Tesseract（OCR）、Whisper/faster-whisper（ASR）。没有时自动降级；Linux 眼睛还需要 grim/scrot/ImageMagick 或 X11（任一即可），macOS 需屏幕录制权限。
 - 插件**没有 npm 运行时依赖**，不需要 `npm install`。
 
 权限边界：
@@ -89,6 +99,7 @@ npm start
 ## 配置
 
 - `config/default.json`：默认配置（会被 `settings.json` 覆盖）。
+- 默认数据目录：`~/.dsh/shabi`（不再写进插件安装目录，升级不会丢）。
 - `settings.json`：设置页保存的非密钥配置（首次保存后生成）。
 - `secrets.ioshb`：`llm.apiKey`、`imageApi.apiKey`、`qqBot.appSecret`、`qqBot.token` 的加密存储。
 - `master.key`：AES-256-GCM 主密钥（0600）。优先级：`SHABI_MASTER_KEY` → 本地 `master.key`。
@@ -98,7 +109,7 @@ npm start
   - `SHABI_CAPTURE_COMMAND` / `SHABI_ASR_COMMAND`
   - `SHABI_MASTER_KEY`（32 字节 base64/hex）
 
-设置页覆盖：截屏频率/范围、隐私、视频抽帧/覆盖率/分块、自主开关/频率/上限/冷却、人格、图片 API + 测试、记忆管理、安全白名单、QQ 机器人、账号状态、模型、日志。
+设置页覆盖：眼睛测试/截屏频率/范围、隐私、视频抽帧/覆盖率/分块、B 站 Cookie/推荐条数/无字幕下载、小说默认地址/Cookie、学习笔记上限、自主开关/频率/上限/冷却、人格、图片 API + 测试、记忆管理、安全白名单、QQ 机器人、账号状态、模型、日志。
 
 ## 数据格式 IOSHB1
 
@@ -162,6 +173,7 @@ shabi-plugin/
 │   ├── personality.json
 │   └── settings.schema.json
 ├── core/
+│   ├── content.js          # B 站推荐/字幕学习 + 小说阅读
 │   ├── eye.js              # 眼睛
 │   ├── videoAnalyzer.js    # 视频完整看
 │   ├── knowledge.js        # 知识抽取/图谱
@@ -174,6 +186,7 @@ shabi-plugin/
 │   ├── safety.js           # 安全护栏
 │   └── interest.js         # 兴趣选片
 ├── lib/                    # 宿主适配/配置/IOSHB/日志/加密/工具
+│   └── client.js           # DSH Web settings.section 客户端入口
 ├── ui/                     # 设置页与聊天增强
 ├── scripts/                # selfcheck / dev-server
 ├── tests/                  # node:test
@@ -196,7 +209,17 @@ shabi-plugin/
 
 ## 已知限制
 
-- 设置页需要宿主提供 HTTP 路由（`ctx.http`/`ctx.webServer`/`ctx.server` 等）。若宿主没有，使用 `npm start` 的独立设置页。
+- DSH Web 设置 section 依赖 `dsh-client-ui-settings`；TUI/headless 使用独立设置页或 `npm start`。
+- B 站个性化推荐和字幕需要用户自己的 Cookie；没有 Cookie 时退回公开排行榜，仍可刷到视频，但字幕/高清下载可能不可用。
+- 小说抓取只处理静态 HTML 页面；动态渲染、登录墙或强风控站点会返回明确错误，插件不会绕过。
 - QQ 图片回复需要 `qqBot.publicBaseUrl` 提供公网可访问 URL；没有公网时只回文字。
-- DSH 各版本的宿主服务名可能不同；`lib/host.js` 做了多形态适配，但完整截屏/视觉/输入能力仍取决于宿主实际提供的服务。
 - 视频分析使用本机 FFmpeg；长视频受 `video.maxVideoSeconds`（默认 120 秒）限制，这是规格要求。
+
+## 验证记录（1.1.0）
+
+- `npm test`：**31/31 通过**，新增设置路由、B 站推荐、无字幕兜底学习、小说抓取/翻页、学习写记忆测试。
+- 真实 DSH `0.2.2-rc.5` Web profile：`dsh plugin --profile web add <本地路径>` 成功；`--dump-config` 出现 `# == shabi-plugin / id: shabi`。
+- 真实 Web 启动：`工具注册完成 registered:10 total:10 failures:[]`；不再出现 `cannot create effect on inactive context`。
+- 真实 `GET /shabi/settings` 返回 200；设置页渲染 15 个分组，含“B站 / 小说 / 学习”全部字段；`GET /shabi/ui/settings.js` 返回正确 JS（非 Buffer JSON）。
+- 真实 `POST /shabi/api/settings` 保存成功；`POST /shabi/api/content {"action":"next"}` 返回真实 B 站视频。
+- 真实眼睛：Linux 无宿主 `screen.capture` 时自动用本机截屏，捕获到 `about:blank - Chromium` 窗口，`failures:0`；Tesseract 自动探测可用。

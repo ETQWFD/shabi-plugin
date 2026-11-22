@@ -1,7 +1,7 @@
 {
   "id": "shabi-plugin",
   "name": "沙币",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "dsh-bundle",
   "description": "带眼睛、长期记忆、人格、自主循环、AI 自拍与 QQ 官方机器人的桌面插件。",
   "entry": "main.js",
@@ -14,10 +14,12 @@
     "recommendedVersion": ">=0.2.0"
   },
   "settings": {
-    "page": "ui/settings.html",
+    "page": "/shabi/settings",
     "schema": "config/settings.schema.json",
     "apiBase": "/shabi/api",
-    "title": "沙币设置"
+    "title": "沙币设置",
+    "entry": "settings.section",
+    "client": "lib/client.js"
   },
   "capabilities": [
     "screen-context",
@@ -30,7 +32,10 @@
     "image-selfie",
     "qq-official-bot",
     "desktop-help",
-    "safety-guard"
+    "safety-guard",
+    "bilibili-content",
+    "novel-reader",
+    "web-settings-section"
   ],
   "permissions": [
     {
@@ -101,19 +106,59 @@
     }
   ],
   "hostServices": [
-    "screen", "vision", "llm", "media", "ui", "chat", "http", "secrets", "accounts", "content", "input"
+    "screen",
+    "vision",
+    "llm",
+    "media",
+    "ui",
+    "chat",
+    "http",
+    "secrets",
+    "accounts",
+    "content",
+    "input"
   ],
   "commands": [
-    { "name": "帮助", "description": "列出沙币可用命令" },
-    { "name": "看屏幕", "description": "读取当前屏幕上下文" },
-    { "name": "发自拍", "description": "生成一张带 AI 标注的自拍" },
-    { "name": "记住 <内容>", "description": "写入长期记忆" },
-    { "name": "忘掉 <id>", "description": "删除一条记忆（需确认）" },
-    { "name": "你记得什么", "description": "检索记忆" },
-    { "name": "分析视频 <路径或URL>", "description": "登记并分析视频" },
-    { "name": "切换人格 <名称>", "description": "切换人格" },
-    { "name": "开始自主 / 停止自主", "description": "开关自主循环" },
-    { "name": "状态", "description": "查看运行状态" }
+    {
+      "name": "帮助",
+      "description": "列出沙币可用命令"
+    },
+    {
+      "name": "看屏幕",
+      "description": "读取当前屏幕上下文"
+    },
+    {
+      "name": "发自拍",
+      "description": "生成一张带 AI 标注的自拍"
+    },
+    {
+      "name": "记住 <内容>",
+      "description": "写入长期记忆"
+    },
+    {
+      "name": "忘掉 <id>",
+      "description": "删除一条记忆（需确认）"
+    },
+    {
+      "name": "你记得什么",
+      "description": "检索记忆"
+    },
+    {
+      "name": "分析视频 <路径或URL>",
+      "description": "登记并分析视频"
+    },
+    {
+      "name": "切换人格 <名称>",
+      "description": "切换人格"
+    },
+    {
+      "name": "开始自主 / 停止自主",
+      "description": "开关自主循环"
+    },
+    {
+      "name": "状态",
+      "description": "查看运行状态"
+    }
   ],
   "compliance": {
     "account": "账号由用户本人登录并授权；插件不代登录、不保存密码。",

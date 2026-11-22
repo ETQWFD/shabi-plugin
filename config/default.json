@@ -1,5 +1,5 @@
 {
-  "dataDir": ".",
+  "dataDir": "~/.dsh/shabi",
   "language": "zh-CN",
   "eye": {
     "enabled": true,
@@ -15,7 +15,10 @@
     "ocr": {
       "enabled": true,
       "command": "",
-      "languages": ["chi_sim", "eng"],
+      "languages": [
+        "chi_sim",
+        "eng"
+      ],
       "maxChars": 4000,
       "timeoutSec": 30
     },
@@ -30,7 +33,15 @@
       "windowAllowlist": [],
       "blurRegions": [],
       "storeScreenshots": false,
-      "redactPatterns": ["password", "密码", "token", "api[_ -]?key", "身份证", "银行卡", "验证码"]
+      "redactPatterns": [
+        "password",
+        "密码",
+        "token",
+        "api[_ -]?key",
+        "身份证",
+        "银行卡",
+        "验证码"
+      ]
     },
     "failure": {
       "maxConsecutive": 5,
@@ -38,7 +49,6 @@
       "skipLog": true
     }
   },
-
   "video": {
     "defaultMode": "hybrid",
     "mode": "hybrid",
@@ -68,7 +78,6 @@
       "model": "whisper"
     }
   },
-
   "knowledge": {
     "dedupeThreshold": 0.9,
     "crossValidateThreshold": 0.85,
@@ -78,7 +87,6 @@
     "autoWrite": true,
     "graphPrune": 0.05
   },
-
   "memory": {
     "maxEntriesPerFile": 500,
     "maxFileBytes": 8388608,
@@ -98,12 +106,10 @@
     "resurfaceBoost": 0.2,
     "archiveMaxEntriesPerFile": 1000
   },
-
   "personality": {
     "active": "tsundere",
     "customPersonalityPath": "data/personalities.custom.json"
   },
-
   "autonomy": {
     "enabled": false,
     "intervalSec": 180,
@@ -111,7 +117,10 @@
     "dailyLimit": 40,
     "hourlyLimit": 8,
     "cooldownSec": 30,
-    "quietHours": ["23:00", "07:00"],
+    "quietHours": [
+      "23:00",
+      "07:00"
+    ],
     "proactivity": 0.45,
     "useLlm": true,
     "resurfaceEveryTicks": 20,
@@ -121,7 +130,6 @@
     "dedupeWindowSec": 3600,
     "maxActionsPerTick": 1
   },
-
   "imageApi": {
     "provider": "openai",
     "endpoint": "https://api.openai.com/v1",
@@ -136,7 +144,6 @@
     "timeoutSec": 180,
     "retries": 1
   },
-
   "qqBot": {
     "enabled": false,
     "mode": "webhook",
@@ -158,10 +165,11 @@
       "dedupeWindow": 600
     }
   },
-
   "safety": {
     "allowedDirs": [],
-    "appAllowlist": ["shabi-plugin"],
+    "appAllowlist": [
+      "shabi-plugin"
+    ],
     "denyPatterns": [
       "**/.ssh/**",
       "**/id_rsa*",
@@ -175,16 +183,18 @@
     "logActions": true,
     "backupBeforeWrite": true
   },
-
   "interest": {
     "epsilon": 0.1,
     "ucb": 0.15,
-    "sources": ["memory", "chat", "watch"],
+    "sources": [
+      "memory",
+      "chat",
+      "watch"
+    ],
     "maxCandidates": 200,
     "boost": 0.2,
     "decayHalfLifeDays": 30
   },
-
   "privacy": {
     "qqReadScreen": false,
     "sendContentToThirdParty": false,
@@ -194,7 +204,6 @@
     "screenshotRetentionDays": 0,
     "memoryRetentionDays": 0
   },
-
   "accounts": {
     "platforms": [
       {
@@ -203,7 +212,9 @@
         "authorized": false,
         "sessionMode": "user-cookie",
         "cookieSource": "host",
-        "allowedActions": ["watch-authorized-video"],
+        "allowedActions": [
+          "watch-authorized-video"
+        ],
         "note": "由用户本人登录；插件不代登录、不保存密码"
       },
       {
@@ -212,7 +223,9 @@
         "authorized": false,
         "sessionMode": "user-cookie",
         "cookieSource": "host",
-        "allowedActions": ["watch-authorized-video"],
+        "allowedActions": [
+          "watch-authorized-video"
+        ],
         "note": "由用户本人登录；遇验证码/风控立即停止"
       },
       {
@@ -221,7 +234,9 @@
         "authorized": false,
         "sessionMode": "user-cookie",
         "cookieSource": "host",
-        "allowedActions": ["watch-authorized-video"],
+        "allowedActions": [
+          "watch-authorized-video"
+        ],
         "note": "仅观看用户已登录且允许的内容"
       },
       {
@@ -230,12 +245,13 @@
         "authorized": false,
         "sessionMode": "official-bot",
         "cookieSource": "none",
-        "allowedActions": ["reply-at-message"],
+        "allowedActions": [
+          "reply-at-message"
+        ],
         "note": "仅使用 QQ 官方机器人平台，不接入个人号"
       }
     ]
   },
-
   "llm": {
     "endpoint": "https://api.deepseek.com/v1",
     "apiKey": "",
@@ -246,19 +262,40 @@
     "temperature": 0.7,
     "maxTokens": 1024
   },
-
   "media": {
     "ffmpeg": "ffmpeg",
     "ffprobe": "ffprobe",
     "maxConcurrent": 1,
     "asrCommand": ""
   },
-
   "logging": {
     "level": "info",
     "maxFileBytes": 5242880,
     "keepFiles": 7,
     "redact": true,
     "console": true
+  },
+  "content": {
+    "bilibili": {
+      "enabled": true,
+      "cookie": "",
+      "feedLimit": 12,
+      "quality": 16,
+      "downloadVideo": false,
+      "maxDownloadMB": 200,
+      "learnSubtitles": true
+    },
+    "novel": {
+      "enabled": true,
+      "defaultUrl": "",
+      "cookie": "",
+      "referer": "",
+      "autoSummarize": false,
+      "maxCharsPerChapter": 12000
+    },
+    "learning": {
+      "autoWriteMemory": true,
+      "maxNotesPerItem": 20
+    }
   }
 }

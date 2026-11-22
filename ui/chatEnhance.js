@@ -61,6 +61,26 @@ export function createChatEnhance(app) {
         if (!found.length) return { text: '我这儿暂时没有相关记忆。', handled: true };
         return { text: found.map((f, i) => `${i + 1}. ${f.summary}`).join('\n'), handled: true, memories: found };
       }
+      if (/^(刷B站|刷b站|看B站|看b站|B站推荐|b站推荐)$/.test(input)) {
+        const result = await app.content.bilibiliNext();
+        if (!result.ok) return { text: `没能刷到内容：${result.error}`, handled: true };
+        return { text: `B 站这条不错：${result.pick.title}\n${result.pick.url}`, handled: true, content: result };
+      }
+      if (/^(学B站|学b站|学习B站)\s+/.test(input)) {
+        const target = input.replace(/^(学B站|学b站|学习B站)\s+/, '').trim();
+        const result = await app.content.bilibiliLearn(target);
+        return { text: result.ok ? `学完了：${result.title}，记了 ${result.notes?.length || 0} 条。` : `学习失败：${result.error}`, handled: true, content: result };
+      }
+      if (/^(看小说|读小说)\s+/.test(input)) {
+        const url = input.replace(/^(看小说|读小说)\s+/, '').trim();
+        const result = await app.content.novelOpen(url);
+        if (!result.ok) return { text: `没能打开：${result.error}`, handled: true };
+        return { text: `《${result.title}》已打开，${result.paragraphs.length} 段。\n${result.paragraphs.slice(0, 2).join('\n')}`, handled: true, content: result };
+      }
+      if (/^(下一章|翻页|继续读)$/.test(input)) {
+        const result = await app.content.novelNext();
+        return { text: result.ok ? `${result.title}\n${(result.paragraphs || []).slice(0, 2).join('\n')}` : `翻页失败：${result.error}`, handled: true, content: result };
+      }
       m = input.match(/^分析视频[:：]?\s*(\S.+)$/);
       if (m) {
         const entry = await app.video.registerVideo(m[1].trim());
@@ -140,6 +160,10 @@ function helpText() {
     '· 你记得什么 / 还记得… —— 检索记忆',
     '· 忘掉：<关键词> —— 归档相关记忆',
     '· 分析视频 <路径或URL> —— 完整分析视频',
+    '· 刷B站 —— 从推荐里挑一条',
+    '· 学B站 <BV号或链接> —— 字幕学习并写记忆',
+    '· 看小说 <链接> —— 打开小说并阅读',
+    '· 下一章 —— 继续读当前小说',
     '· 切换人格 <名称> —— 切换人格',
     '· 开始自主 / 停止自主 —— 控制自主循环',
   ].join('\n');
