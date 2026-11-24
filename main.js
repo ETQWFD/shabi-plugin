@@ -7,6 +7,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 import { createHost } from './lib/host.js';
 import { createLogger } from './lib/logger.js';
@@ -34,8 +35,9 @@ import { Autonomy } from './core/autonomy.js';
 import { createChatEnhance, registerChatEnhance } from './ui/chatEnhance.js';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const pkg = createRequire(import.meta.url)('./package.json');
 export const name = 'shabi-plugin';
-export const version = '1.3.0';
+export const version = pkg.version;
 // Cordis 的服务可见性：声明 tools 后，Web profile 才允许直接 ctx.tools.register。
 export const inject = ['tools'];
 

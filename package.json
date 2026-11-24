@@ -1,6 +1,6 @@
 {
   "name": "shabi-plugin",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "沙币：带眼睛、长期记忆、人格、自主循环、空闲陪伴、逐帧视频学习与 QQ 官方机器人的 DSH 桌面插件",
   "type": "module",
   "main": "main.js",
