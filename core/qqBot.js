@@ -7,7 +7,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { DedupeSet, RateLimiter, nowIso, clamp, shortHash, sleep } from '../lib/util.js';
+import { DedupeSet, RateLimiter, nowIso, clamp, shortHash, sleep, inQuietHours } from '../lib/util.js';
+import { readFile as readIoshb, writeFileAtomic } from '../lib/ioshb.js';
 
 const DEFAULT_INTENTS = (1 << 25) | (1 << 30); // GROUP_AT_MESSAGE_CREATE | PUBLIC_MESSAGES
 
@@ -30,11 +31,26 @@ export class QQBot {
     this.running = false;
     this.reconnectAttempts = 0;
     this.stats = { received: 0, replied: 0, skipped: 0, errors: 0, lastAt: null, lastError: null };
+    this.lastC2C = null;
+    this.proactiveState = null;
+    this.qqStateFile = path.join(ctx.paths.data, 'qq_state.ioshb');
   }
 
   async init() {
     this.#buildLimiters();
+    this.proactiveState = (await readIoshb(this.qqStateFile).catch(() => null)) || {
+      format: 'IOSHB1', version: 1, lastC2C: null,
+      proactive: { day: null, count: 0, lastAt: null, suppressedUntil: null },
+    };
+    this.lastC2C = this.proactiveState.lastC2C || null;
     return this;
+  }
+
+  async #saveState() {
+    this.proactiveState = this.proactiveState || { format: 'IOSHB1', version: 1, lastC2C: null, proactive: {} };
+    this.proactiveState.lastC2C = this.lastC2C || null;
+    this.proactiveState.updatedAt = nowIso();
+    await writeFileAtomic(this.qqStateFile, this.proactiveState).catch(() => {});
   }
 
   #buildLimiters() {
@@ -334,6 +350,21 @@ export class QQBot {
     if (!text) return { skipped: true, reason: 'empty' };
     this.contexts.set(msg.channelId, msg);
     if (this.contexts.size > 500) this.contexts.delete(this.contexts.keys().next().value);
+    if (msg.type === 'c2c') {
+      this.lastC2C = { type: 'c2c', channelId: msg.channelId, target: msg.target, userId: msg.userId, id: msg.id, at: nowIso() };
+      this.proactiveState.proactive = this.proactiveState.proactive || {};
+      if (!this.proactiveState.proactive.lastUserAt || this.proactiveState.proactive.lastUserAt < (this.lastC2C.at || '')) {
+        this.proactiveState.proactive.lastUserAt = this.lastC2C.at;
+      }
+      await this.#saveState();
+    }
+    if (this.config.proactive?.enabled && /^(别发了|停止主动|不要主动|别再找我|闭嘴)$/i.test(text)) {
+      this.proactiveState.proactive = this.proactiveState.proactive || {};
+      this.proactiveState.proactive.suppressedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await this.#saveState();
+      await this.sendMessage(msg.channelId, '好，我最近不主动找你了。需要我时再叫我。');
+      return { ok: true, channelId: msg.channelId, suppressed: true };
+    }
 
     try {
       const result = await this.#replyPipeline(msg, text);
@@ -442,7 +473,52 @@ export class QQBot {
 
   // ───────────────────────── 发送 ─────────────────────────
 
-  async sendMessage(channelId, content, image) {
+  getProactiveStatus() {
+    const p = this.proactiveState?.proactive || {};
+    return {
+      enabled: Boolean(this.config.proactive?.enabled),
+      lastC2C: this.lastC2C ? { channelId: this.lastC2C.channelId, at: this.lastC2C.at } : null,
+      lastAt: p.lastAt || null,
+      count: resetDay(p).count,
+      maxPerDay: Number(this.config.proactive?.maxPerDay || 2),
+      minGapMin: Number(this.config.proactive?.minGapMin || 120),
+      suppressedUntil: p.suppressedUntil || null,
+    };
+  }
+
+  /** 主动 QQ 消息：必须显式开启、仅 C2C、限额、安静时段、用户可一句话停止。 */
+  async sendProactive(text, { reason = 'idle' } = {}) {
+    const cfg = this.config.proactive || {};
+    if (!cfg.enabled) return { ok: false, reason: 'proactive-disabled' };
+    if (!this.running) return { ok: false, reason: 'qq-not-running' };
+    if (!this.lastC2C?.channelId) return { ok: false, reason: 'no-c2c-context' };
+    const now = new Date();
+    this.proactiveState.proactive = resetDay(this.proactiveState.proactive || {}, now);
+    const p = this.proactiveState.proactive;
+    if (p.suppressedUntil && now.getTime() < new Date(p.suppressedUntil).getTime()) return { ok: false, reason: 'user-suppressed' };
+    if (inQuietHours(cfg.quietHours || ['23:00', '07:00'], now)) return { ok: false, reason: 'quiet-hours' };
+    if (p.count >= Number(cfg.maxPerDay || 2)) return { ok: false, reason: 'daily-limit' };
+    if (p.lastAt && now.getTime() - new Date(p.lastAt).getTime() < Number(cfg.minGapMin || 120) * 60000) return { ok: false, reason: 'gap-limit' };
+    const ageHours = (now.getTime() - new Date(this.lastC2C.at || now).getTime()) / 3600000;
+    if (ageHours > Number(cfg.maxAgeHours || 72)) return { ok: false, reason: 'context-too-old' };
+    const content = String(text || '').trim().slice(0, Number(cfg.maxChars || 160));
+    if (!content) return { ok: false, reason: 'empty' };
+    try {
+      await this.sendMessage(this.lastC2C, content, undefined, { proactive: true });
+      p.count += 1;
+      p.lastAt = nowIso();
+      p.lastReason = reason;
+      await this.#saveState();
+      this.stats.replied += 1;
+      return { ok: true, channelId: this.lastC2C.channelId, reason };
+    } catch (err) {
+      this.stats.errors += 1;
+      this.stats.lastError = err.message;
+      return { ok: false, reason: 'send-failed', error: err.message };
+    }
+  }
+
+  async sendMessage(channelId, content, image, { proactive = false } = {}) {
     const ctx = typeof channelId === 'object' ? channelId : this.contexts.get(channelId) || parseChannel(channelId);
     const msgId = ctx.id || ctx.msgId;
     if (!ctx?.target) throw new Error(`QQ 发送缺少目标：${channelId}`);
@@ -460,13 +536,13 @@ export class QQBot {
     if (ctx.type === 'group') {
       url = `${apiBase}/v2/groups/${ctx.target}/messages`;
       body = media
-        ? { content: text || ' ', msg_type: 7, media, msg_id: msgId, msg_seq: this.#nextSeq(msgId) }
-        : { content: text, msg_type: 0, msg_id: msgId, msg_seq: this.#nextSeq(msgId) };
+        ? { content: text || ' ', msg_type: 7, media, ...(proactive ? {} : { msg_id: msgId, msg_seq: this.#nextSeq(msgId) }) }
+        : { content: text, msg_type: 0, ...(proactive ? {} : { msg_id: msgId, msg_seq: this.#nextSeq(msgId) }) };
     } else if (ctx.type === 'c2c') {
       url = `${apiBase}/v2/users/${ctx.target}/messages`;
       body = media
-        ? { content: text || ' ', msg_type: 7, media, msg_id: msgId, msg_seq: this.#nextSeq(msgId) }
-        : { content: text, msg_type: 0, msg_id: msgId, msg_seq: this.#nextSeq(msgId) };
+        ? { content: text || ' ', msg_type: 7, media, ...(proactive ? {} : { msg_id: msgId, msg_seq: this.#nextSeq(msgId) }) }
+        : { content: text, msg_type: 0, ...(proactive ? {} : { msg_id: msgId, msg_seq: this.#nextSeq(msgId) }) };
     } else {
       url = `${apiBase}/channels/${ctx.target}/messages`;
       body = { content: text, ...(media?.url ? { image: media.url } : {}) };
@@ -616,6 +692,15 @@ function normalizeHeaders(headers) {
 
 function stripMentions(content) {
   return String(content || '').replace(/<@[!&]?\d+>/g, '').replace(/@\S+\s*/g, '').trim();
+}
+
+function resetDay(p, now = new Date()) {
+  const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  if (p.day !== day) {
+    p.day = day;
+    p.count = 0;
+  }
+  return p;
 }
 
 function parseChannel(channelId) {

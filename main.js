@@ -25,6 +25,8 @@ import { KnowledgeEngine } from './core/knowledge.js';
 import { InterestEngine } from './core/interest.js';
 import { ContentHub } from './core/content.js';
 import { ScreenStudy } from './core/screenStudy.js';
+import { StudyHub } from './core/study.js';
+import { Companion } from './core/companion.js';
 import { ImageApi } from './core/imageApi.js';
 import { QQBot } from './core/qqBot.js';
 import { DecisionEngine } from './core/decision.js';
@@ -33,7 +35,7 @@ import { createChatEnhance, registerChatEnhance } from './ui/chatEnhance.js';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url));
 export const name = 'shabi-plugin';
-export const version = '1.2.0';
+export const version = '1.3.0';
 // Cordis 的服务可见性：声明 tools 后，Web profile 才允许直接 ctx.tools.register。
 export const inject = ['tools'];
 
@@ -85,6 +87,10 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
     await app.content.init();
     app.screenStudy = new ScreenStudy(app);
     await app.screenStudy.init();
+    app.study = new StudyHub(app);
+    await app.study.init();
+    app.companion = new Companion(app);
+    await app.companion.init();
     app.imageApi = new ImageApi(app);
     await app.imageApi.init();
     app.qq = new QQBot(app);
@@ -99,6 +105,9 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
 
     if (config.eye?.enabled && config.eye?.mode !== 'manual') {
       await app.eye.start().catch((err) => logger.warn('眼睛启动失败，已降级', { error: err.message }));
+    }
+    if (config.companion?.enabled !== false) {
+      app.companion.start();
     }
     if (config.autonomy?.enabled) {
       await app.autonomy.startLoop().catch((err) => logger.warn('自主循环启动失败', { error: err.message }));
@@ -117,6 +126,8 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
       app.disposed = true;
       app.eye.stop();
       app.screenStudy?.dispose?.();
+      app.companion?.dispose?.();
+      app.study?.dispose?.();
       app.autonomy.stopLoop();
       await app.qq.stopBot().catch(() => {});
       for (const d of app.disposers) {
@@ -510,7 +521,7 @@ async function registerTools(app, ctx) {
     },
     {
       name: 'shabi_watch',
-      description: '看屏幕视频学习：用户自己播放 B 站/课程视频，插件用眼睛定时截屏、OCR 字幕、理解画面并写知识笔记。不登录平台、不抓视频流。',
+      description: '看屏幕视频学习：用户自己播放 B 站/课程视频，插件用眼睛逐帧截屏、视觉理解，OCR 仅作兜底并写知识笔记。不登录平台、不抓视频流。',
       parameters: {
         action: { type: 'string', required: true, description: 'start/stop/status/list' },
         title: { type: 'string', description: '这次学习主题，例如“B站：机器学习入门”' },
@@ -523,6 +534,37 @@ async function registerTools(app, ctx) {
         if (args.action === 'stop') return JSON.stringify(await app.screenStudy.stop(), null, 2);
         if (args.action === 'list') return JSON.stringify({ ok: true, sessions: await app.screenStudy.listSessions() }, null, 2);
         return JSON.stringify({ ok: true, watch: app.screenStudy.getStatus() }, null, 2);
+      },
+    },
+    {
+      name: 'shabi_study',
+      description: '自主学习队列：把本地视频加入队列，空闲时逐帧视觉学习、覆盖率不达标自动重学、写笔记与长期记忆。不登录平台、不抓流。',
+      parameters: {
+        action: { type: 'string', required: true, description: 'status/add/next/scan/favorite' },
+        path: { type: 'string', description: '本地视频文件绝对路径或学习目录内文件名' },
+        title: { type: 'string', description: '学习标题' },
+      },
+      output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
+      async execute(args) {
+        if (args.action === 'add') return JSON.stringify(await app.study.add(args.path, { title: args.title }), null, 2);
+        if (args.action === 'next') return JSON.stringify(app.study.startNext(), null, 2);
+        if (args.action === 'scan') return JSON.stringify(await app.study.scanInbox(), null, 2);
+        if (args.action === 'favorite') return JSON.stringify(await app.study.addFavorite(args), null, 2);
+        return JSON.stringify(app.study.getStatus(), null, 2);
+      },
+    },
+    {
+      name: 'shabi_companion',
+      description: '空闲陪伴循环：空闲时优先学习队列；QQ 主动消息必须显式开启，严格限额。不执行系统命令、不安装软件、不自动刷平台。',
+      parameters: {
+        action: { type: 'string', required: true, description: 'status/start/stop/tick' },
+      },
+      output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
+      async execute(args) {
+        if (args.action === 'start') return JSON.stringify(app.companion.start(), null, 2);
+        if (args.action === 'stop') return JSON.stringify(app.companion.stop(), null, 2);
+        if (args.action === 'tick') return JSON.stringify(await app.companion.tick(), null, 2);
+        return JSON.stringify(app.companion.getStatus(), null, 2);
       },
     },
     {
@@ -661,6 +703,31 @@ function setupApiRoutes(app) {
     if (action === 'status') return json({ ok: true, watch: app.screenStudy.getStatus() });
     if (action === 'list') return json({ ok: true, sessions: await app.screenStudy.listSessions(req.body?.limit || 10) });
     return json(400, { ok: false, error: '未知 action' });
+  });
+
+  register('/shabi/api/study', async (req) => {
+    if (req.method === 'GET') return json({ ok: true, study: app.study.getStatus(), favorites: await app.study.listFavorites() });
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+    const action = req.body?.action || 'status';
+    if (action === 'add') {
+      const item = await app.study.add(req.body?.path || req.body?.source, { title: req.body?.title, priority: req.body?.priority });
+      return json({ ok: true, item, study: app.study.getStatus() });
+    }
+    if (action === 'next') return json({ ok: true, ...(app.study.startNext()) });
+    if (action === 'scan') return json({ ok: true, ...(await app.study.scanInbox()) });
+    if (action === 'favorite') return json({ ok: true, favorite: await app.study.addFavorite(req.body || {}) });
+    if (action === 'status') return json({ ok: true, study: app.study.getStatus() });
+    return json(400, { ok: false, error: '未知 action' });
+  });
+
+  register('/shabi/api/companion', async (req) => {
+    if (req.method === 'GET') return json({ ok: true, companion: app.companion.getStatus(), qq: app.qq.getProactiveStatus?.() });
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+    const action = req.body?.action || 'status';
+    if (action === 'start') return json({ ok: true, ...(app.companion.start()) });
+    if (action === 'stop') return json({ ok: true, ...(app.companion.stop()) });
+    if (action === 'tick') return json({ ok: true, ...(await app.companion.tick()) });
+    return json({ ok: true, companion: app.companion.getStatus() });
   });
 
   register('/shabi/api/eye', async (req) => {
@@ -818,6 +885,8 @@ async function applyRuntimeConfig(app, next) {
   app.imageApi.config = next.imageApi;
   app.content.config = next.content;
   app.screenStudy.config = next.screenStudy;
+  app.study.config = next.study;
+  app.companion.config = next.companion;
   app.eye.config = next.eye;
   app.eye.privacy = next.eye?.privacy || app.eye.privacy;
   app.logger.setLevel(next.logging?.level || app.logger.level);
@@ -845,6 +914,13 @@ async function applyRuntimeConfig(app, next) {
     await app.autonomy.startLoop({ enabled: true }).catch((err) => warnings.push(`自主循环启动失败：${err.message}`));
   } else {
     app.autonomy.stopLoop();
+  }
+
+  if (next.companion?.enabled !== false) {
+    app.companion.config = next.companion;
+    app.companion.start();
+  } else {
+    app.companion.stop();
   }
 
   if (next.qqBot?.enabled) {
@@ -880,6 +956,8 @@ function buildStatus(app) {
     interest: app.interest.getStatus(),
     content: app.content?.getStatus?.(),
     screenStudy: app.screenStudy?.getStatus?.(),
+    study: app.study?.getStatus?.(),
+    companion: app.companion?.getStatus?.(),
     safety: app.safety.getStatus(),
     personalities: app.personality.listPersonalities(),
     accounts: app.config.accounts?.platforms || [],

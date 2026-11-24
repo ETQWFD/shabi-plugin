@@ -6,6 +6,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embedded
 
 const API_BASE = window.__SHABI_API_BASE__ || '/shabi/api';
 
+let navScrollLockUntil = 0;
 const state = {
   schema: null,
   config: {},
@@ -110,23 +111,29 @@ function renderNav() {
   const groups = [...(state.schema?.groups || []), { id: 'logs', title: '运行日志', description: '最近日志与错误。' }];
   groups.forEach((g, index) => {
     const a = document.createElement('a');
-    a.href = `#group-${g.id}`;
     a.dataset.target = `group-${g.id}`;
-    if (index === 0) a.classList.add('active');
+    a.setAttribute('role', 'button');
+    if (state.activeGroup ? g.id === state.activeGroup : index === 0) a.classList.add('active');
     a.innerHTML = `<span class="nav-dot"></span><span>${escapeHtml(g.title)}</span>`;
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      const target = $(`#group-${g.id}`);
-      if (target && contentEl) {
-        const top = target.getBoundingClientRect().top - contentEl.getBoundingClientRect().top + contentEl.scrollTop - 8;
-        contentEl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-      }
-      $$('.nav a').forEach((x) => x.classList.remove('active'));
-      a.classList.add('active');
-    });
     navEl.appendChild(a);
   });
 }
+
+navEl.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-target]');
+  if (!a) return;
+  e.preventDefault();
+  const groupId = a.dataset.target.replace(/^group-/, '');
+  const target = $(`#${a.dataset.target}`);
+  if (target && contentEl) {
+    const top = target.getBoundingClientRect().top - contentEl.getBoundingClientRect().top + contentEl.scrollTop - 8;
+    contentEl.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+  }
+  state.activeGroup = groupId;
+  navScrollLockUntil = Date.now() + 1500;
+  $$('.nav a').forEach((x) => x.classList.remove('active'));
+  a.classList.add('active');
+});
 
 function renderContent() {
   contentEl.innerHTML = '';
@@ -930,7 +937,7 @@ async function runAction(action, btn) {
       const cfg = collectAll().screenStudy || {};
       const data = await api('/watch', { method: 'POST', body: { action: 'start', title: cfg.defaultTitle, intervalSec: cfg.intervalSec, maxMinutes: cfg.maxMinutes }, allowFail: true });
       if (!data.ok) throw new Error(data.error || '启动失败');
-      toast('开始看屏幕了。现在播放视频，我会截屏、认字幕、记笔记。', 'ok');
+      toast('开始看屏幕了。现在播放视频，我会逐帧看画面、记笔记。', 'ok');
     } else if (action === 'watchStop') {
       const data = await api('/watch', { method: 'POST', body: { action: 'stop' }, allowFail: true });
       if (!data.ok) throw new Error(data.error || '停止失败');
@@ -946,6 +953,30 @@ async function runAction(action, btn) {
       state.status = data.status || state.status;
       updateStatus();
       toast(paused ? '屏幕识别已恢复' : '屏幕识别已暂停', 'ok');
+    } else if (action === 'studyAdd') {
+      let target = collectAll().study?.addPath || '';
+      if (!target) {
+        target = await askText('加入学习队列', '输入本地视频绝对路径');
+        if (target === null) return;
+      }
+      const data = await api('/study', { method: 'POST', body: { action: 'add', path: target, title: collectAll().study?.title }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '加入失败');
+      toast(`已加入：${data.item?.title || target}`, 'ok');
+    } else if (action === 'studyNext') {
+      const data = await api('/study', { method: 'POST', body: { action: 'next' }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '启动失败');
+      toast(data.started ? `开始逐帧学习：${data.item?.title}` : `没有开始：${data.reason === 'queue-empty' ? '队列为空' : data.reason}`, data.started ? 'ok' : '');
+    } else if (action === 'studyScan') {
+      const data = await api('/study', { method: 'POST', body: { action: 'scan' }, allowFail: true });
+      toast(`扫描完成：新增 ${data.added ?? 0} 条，共 ${data.total ?? 0} 条`, 'ok');
+    } else if (action === 'companionToggle') {
+      const running = Boolean(state.status?.companion?.running);
+      const data = await api('/companion', { method: 'POST', body: { action: running ? 'stop' : 'start' }, allowFail: true });
+      if (data.ok === false) throw new Error(data.error || '空闲陪伴操作失败');
+      const fresh = await api('/status');
+      state.status = fresh.status || state.status;
+      updateStatus();
+      toast(running ? '空闲陪伴已停止' : '空闲陪伴已启动', 'ok');
     } else if (action === 'contentFeed') {
       const data = await api('/content', { method: 'POST', body: { action: 'next' }, allowFail: true });
       if (!data.ok) throw new Error(data.error || '没有刷到 B 站内容');
@@ -1272,6 +1303,7 @@ $('#exportConfig').addEventListener('click', () => {
 
 /// 滚动时高亮导航
 contentEl.addEventListener('scroll', () => {
+  if (Date.now() < navScrollLockUntil) return;
   const sections = $$('.group', contentEl);
   let current = sections[0];
   for (const s of sections) {

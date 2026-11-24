@@ -122,7 +122,7 @@
       "07:00"
     ],
     "proactivity": 0.45,
-    "useLlm": true,
+    "useLlm": false,
     "resurfaceEveryTicks": 20,
     "maxGoals": 20,
     "requireConfirmForHighRisk": true,
@@ -163,6 +163,17 @@
       "perUserPerMin": 6,
       "perChannelPerMin": 20,
       "dedupeWindow": 600
+    },
+    "proactive": {
+      "enabled": false,
+      "maxPerDay": 2,
+      "minGapMin": 120,
+      "maxAgeHours": 72,
+      "maxChars": 160,
+      "quietHours": [
+        "23:00",
+        "07:00"
+      ]
     }
   },
   "safety": {
@@ -305,6 +316,28 @@
     "notesEveryFrames": 8,
     "maxNotesPerSession": 20,
     "autoWriteMemory": true,
-    "defaultTitle": "屏幕视频学习"
+    "defaultTitle": "屏幕视频学习",
+    "mode": "frame",
+    "fallbackOcr": true
+  },
+  "study": {
+    "enabled": true,
+    "maxPasses": 3,
+    "minCoverage": 0.95,
+    "minConfidence": 0.45,
+    "autoWriteMemory": true
+  },
+  "companion": {
+    "enabled": true,
+    "intervalSec": 300,
+    "jitterSec": 60,
+    "quietHours": [
+      "23:00",
+      "07:00"
+    ],
+    "autoStudy": true,
+    "proactiveMinIdleMin": 45,
+    "idleChat": true,
+    "fastMode": true
   }
 }

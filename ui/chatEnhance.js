@@ -61,6 +61,19 @@ export function createChatEnhance(app) {
         if (!found.length) return { text: '我这儿暂时没有相关记忆。', handled: true };
         return { text: found.map((f, i) => `${i + 1}. ${f.summary}`).join('\n'), handled: true, memories: found };
       }
+      if (/^(学习一个视频|开始自主学习|学一个视频)$/.test(input)) {
+        const r = app.study.startNext();
+        return { text: r.started ? `开始逐帧学习：${r.item.title}` : `没有开始：${r.reason === 'queue-empty' ? '学习队列是空的' : r.reason}`, handled: true, study: r };
+      }
+      if (/^(加入学习|学习视频)\s+/.test(input)) {
+        const path = input.replace(/^(加入学习|学习视频)\s+/, '').replace(/^["']|["']$/g, '').trim();
+        const item = await app.study.add(path);
+        return { text: `已加入队列：${item.title}`, handled: true, study: item };
+      }
+      if (/^(学习队列|自主学习状态|学习状态)$/.test(input)) {
+        const st = app.study.getStatus();
+        return { text: `队列 ${st.stats.queued} 条，已完成 ${st.stats.done} 条，失败 ${st.stats.failed} 条。`, handled: true, study: st };
+      }
       if (/^(看视频学习|开始看视频学习|看屏幕学习)/.test(input)) {
         const title = input.replace(/^(看视频学习|开始看视频学习|看屏幕学习)\s*/, '').trim();
         const result = app.screenStudy.start({ title: title || '屏幕视频学习' });
@@ -173,6 +186,8 @@ function helpText() {
     '· 你记得什么 / 还记得… —— 检索记忆',
     '· 忘掉：<关键词> —— 归档相关记忆',
     '· 分析视频 <路径或URL> —— 完整分析视频',
+    '· 学习一个视频 —— 从学习队列里挑一条逐帧学',
+    '· 加入学习 <文件路径> —— 放进自主学习队列',
     '· 看视频学习 [主题] —— 眼睛看你正在播放的视频，自己记笔记',
     '· 停止看视频学习 —— 结束并生成学习记录',
     '· 刷B站 —— 从推荐里挑一条',

@@ -44,6 +44,7 @@ export class ScreenStudy {
       notes: s?.notes?.length || 0,
       durationSec: s ? Math.max(0, Math.round(((s.endedAt ? new Date(s.endedAt).getTime() : Date.now()) - new Date(s.startedAt).getTime()) / 1000)) : 0,
       intervalSec: s?.intervalSec || Number(this.config.intervalSec || 4),
+      mode: s?.mode || this.config.mode || 'frame',
       lastError: this.lastError,
     };
   }
@@ -62,6 +63,7 @@ export class ScreenStudy {
       endedAt: null,
       intervalSec,
       maxMinutes,
+      mode: options.mode || this.config.mode || 'frame',
       frames: [],
       notes: [],
       status: 'running',
@@ -76,7 +78,8 @@ export class ScreenStudy {
     this.timer.unref?.();
     this.tick().catch(() => {});
     this.logger?.info?.('开始看屏幕视频学习', { sessionId: this.session.id, intervalSec, maxMinutes });
-    return { ok: true, ...this.getStatus(), message: '开始看屏幕了。请现在播放视频，我会截屏、认字幕、记笔记。' };
+    const modeText = this.session.mode === 'frame' ? '逐帧看画面' : '认字幕';
+    return { ok: true, ...this.getStatus(), message: `开始看屏幕了。请现在播放视频，我会截屏、${modeText}、记笔记。` };
   }
 
   async stop(reason = 'manual') {
@@ -106,7 +109,9 @@ export class ScreenStudy {
     }
     this.busy = true;
     try {
-      const context = await this.eye.getScreenContext({ force: true });
+      const context = this.session.mode === 'frame'
+        ? await this.eye.getVisualFrame({ force: true, fallbackOcr: this.config.fallbackOcr !== false })
+        : await this.eye.getScreenContext({ force: true });
       if (!context) return;
       const text = String(context.text || context.ocrText || '').trim();
       const scene = String(context.scene || '').trim();

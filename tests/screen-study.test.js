@@ -21,6 +21,7 @@ test('看屏幕视频学习：截屏帧 → OCR 文本 → 笔记 → 学习文�
         timestamp: new Date().toISOString(), width: 1920, height: 1080,
       };
     };
+    app.eye.getVisualFrame = async () => app.eye.getScreenContext({ force: true });
     app.screenStudy.config.notesEveryFrames = 2;
     app.screenStudy.config.maxNotesPerSession = 5;
     app.screenStudy.config.autoWriteMemory = true;
@@ -56,6 +57,7 @@ test('看屏幕视频学习：停止后可以再次开始，且重复画面不�
       app: 'chrome', window: 'B站', text: same ? '同一段字幕' : '新字幕', scene: '', elements: [], source: 'ocr',
       timestamp: new Date().toISOString(), width: 1920, height: 1080,
     });
+    app.eye.getVisualFrame = async () => app.eye.getScreenContext({ force: true });
     app.screenStudy.start({ title: '重复帧', intervalSec: 1, maxMinutes: 1 });
     await sleep(1200);
     assert.equal(app.screenStudy.session.frames.length, 1, '相同画面被重复堆帧');

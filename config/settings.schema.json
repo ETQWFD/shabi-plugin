@@ -490,11 +490,34 @@
     {
       "id": "screenStudy",
       "title": "看视频学习（眼睛）",
-      "description": "你播放 B 站/课程视频（建议开启平台字幕/CC），插件用眼睛截屏、OCR 字幕、理解画面并写笔记。不登录平台、不抓视频流。",
+      "description": "你播放 B 站/课程视频，插件逐帧截取屏幕画面、视觉理解并写笔记；视觉模型不可用时才 OCR 兜底。不登录平台、不抓视频流。",
       "fields": [
         {
           "key": "screenStudy.enabled",
           "label": "启用看视频学习",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "screenStudy.mode",
+          "label": "观看方式",
+          "type": "select",
+          "default": "frame",
+          "options": [
+            {
+              "value": "frame",
+              "label": "逐帧视觉（推荐，不依赖 OCR）"
+            },
+            {
+              "value": "subtitle",
+              "label": "字幕 OCR"
+            }
+          ],
+          "hint": "逐帧视觉把每一帧交给视觉模型；没有视觉模型时可用 OCR 兜底。"
+        },
+        {
+          "key": "screenStudy.fallbackOcr",
+          "label": "视觉不可用时 OCR 兜底",
           "type": "boolean",
           "default": true
         },
@@ -556,6 +579,139 @@
           "type": "action",
           "action": "watchStop",
           "button": "停止看"
+        }
+      ]
+    },
+    {
+      "id": "study",
+      "title": "自主学习队列",
+      "description": "把本地视频放进学习目录；空闲时自动逐帧学习，覆盖率/置信度不达标会在上限内重学。不登录平台、不抓流。",
+      "fields": [
+        {
+          "key": "study.enabled",
+          "label": "启用自主学习",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "study.maxPasses",
+          "label": "最多重学轮次",
+          "type": "number",
+          "min": 1,
+          "max": 6,
+          "default": 3
+        },
+        {
+          "key": "study.minCoverage",
+          "label": "掌握覆盖率阈值",
+          "type": "number",
+          "min": 0.5,
+          "max": 1,
+          "default": 0.95
+        },
+        {
+          "key": "study.minConfidence",
+          "label": "逐帧理解置信度阈值",
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "default": 0.45
+        },
+        {
+          "key": "study.autoWriteMemory",
+          "label": "学习结果写入记忆",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "study.addPath",
+          "label": "视频文件路径",
+          "type": "text",
+          "placeholder": "/home/user/videos/lesson.mp4"
+        },
+        {
+          "key": "__action.study.add",
+          "label": "加入学习队列",
+          "type": "action",
+          "action": "studyAdd",
+          "button": "加入"
+        },
+        {
+          "key": "__action.study.next",
+          "label": "立即学一个",
+          "type": "action",
+          "action": "studyNext",
+          "button": "开始学"
+        },
+        {
+          "key": "__action.study.scan",
+          "label": "扫描学习目录",
+          "type": "action",
+          "action": "studyScan",
+          "button": "扫描"
+        },
+        {
+          "key": "__readonly.study.inbox",
+          "label": "学习目录",
+          "type": "readonly",
+          "default": "~/.dsh/shabi/study/inbox"
+        }
+      ]
+    },
+    {
+      "id": "companion",
+      "title": "空闲陪伴",
+      "description": "空闲时优先学习队列；只有显式开启 QQ 主动消息后，才会低频、限额地发一句，用户可随时说“别发了”。",
+      "fields": [
+        {
+          "key": "companion.enabled",
+          "label": "启用空闲陪伴循环",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "companion.intervalSec",
+          "label": "检查间隔（秒）",
+          "type": "number",
+          "min": 60,
+          "max": 3600,
+          "default": 300
+        },
+        {
+          "key": "companion.autoStudy",
+          "label": "空闲时自动学习队列",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "companion.proactiveMinIdleMin",
+          "label": "你多久没说话才主动",
+          "type": "number",
+          "min": 5,
+          "max": 720,
+          "default": 45
+        },
+        {
+          "key": "companion.quietHours",
+          "label": "主动消息安静时段",
+          "type": "timeRange",
+          "default": [
+            "23:00",
+            "07:00"
+          ]
+        },
+        {
+          "key": "companion.fastMode",
+          "label": "规则直出（不跑深度决策）",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "__action.companion.start",
+          "label": "启动 / 停止空闲陪伴",
+          "type": "action",
+          "action": "companionToggle",
+          "button": "切换"
         }
       ]
     },
@@ -632,9 +788,9 @@
         },
         {
           "key": "autonomy.useLlm",
-          "label": "使用 LLM 决策",
+          "label": "用 LLM 做自主决策（关闭=规则直出）",
           "type": "boolean",
-          "default": true,
+          "default": false,
           "hint": "关闭后只用规则引擎，零 token 消耗。"
         },
         {
@@ -1236,6 +1392,37 @@
           "type": "boolean",
           "default": false,
           "hint": "还需要 privacy.qqReadScreen=true。"
+        },
+        {
+          "key": "qqBot.proactive.enabled",
+          "label": "允许主动 QQ 消息",
+          "type": "boolean",
+          "default": false,
+          "hint": "只发给你最近私聊的 C2C；每日/间隔/安静时段全部生效；你说“别发了”会停止 7 天。"
+        },
+        {
+          "key": "qqBot.proactive.maxPerDay",
+          "label": "主动消息每日上限",
+          "type": "number",
+          "min": 0,
+          "max": 5,
+          "default": 2
+        },
+        {
+          "key": "qqBot.proactive.minGapMin",
+          "label": "两条主动消息最小间隔（分钟）",
+          "type": "number",
+          "min": 30,
+          "max": 1440,
+          "default": 120
+        },
+        {
+          "key": "qqBot.proactive.maxAgeHours",
+          "label": "最近私聊多久内才允许主动",
+          "type": "number",
+          "min": 1,
+          "max": 168,
+          "default": 72
         },
         {
           "key": "qqBot.rateLimit.perUserPerMin",
