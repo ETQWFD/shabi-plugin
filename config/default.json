@@ -297,5 +297,14 @@
       "autoWriteMemory": true,
       "maxNotesPerItem": 20
     }
+  },
+  "screenStudy": {
+    "enabled": true,
+    "intervalSec": 4,
+    "maxMinutes": 60,
+    "notesEveryFrames": 8,
+    "maxNotesPerSession": 20,
+    "autoWriteMemory": true,
+    "defaultTitle": "屏幕视频学习"
   }
 }

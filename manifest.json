@@ -1,9 +1,9 @@
 {
   "id": "shabi-plugin",
   "name": "沙币",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "type": "dsh-bundle",
-  "description": "带眼睛、长期记忆、人格、自主循环、AI 自拍与 QQ 官方机器人的桌面插件。",
+  "description": "带眼睛、长期记忆、人格、自主循环、AI 自拍、看视频学习与 QQ 官方机器人的桌面插件。",
   "entry": "main.js",
   "icon": "ui/icon.svg",
   "dsh": {
@@ -29,6 +29,7 @@
     "personality",
     "autonomy-loop",
     "interest-selection",
+    "screen-video-learning",
     "image-selfie",
     "qq-official-bot",
     "desktop-help",
@@ -136,6 +137,14 @@
       "description": "写入长期记忆"
     },
     {
+      "name": "看视频学习 [主题]",
+      "description": "用眼睛看你正在播放的视频，截屏 OCR、理解画面、记笔记"
+    },
+    {
+      "name": "停止看视频学习",
+      "description": "结束观看并生成学习记录"
+    },
+    {
       "name": "忘掉 <id>",
       "description": "删除一条记忆（需确认）"
     },
@@ -166,6 +175,7 @@
     "platformLimits": "遇到验证码、风控提示、平台限制或规则不允许时立即停止并提示用户。",
     "noEvasion": "不实现反检测、不绕过平台限制、不伪造人类行为指纹。",
     "selfieDisclosure": "所有生成图片标注“AI 生成”，不冒充真人。",
-    "privacy": "屏幕、记忆与聊天默认本地处理；日志脱敏；记忆内容 AES-256-GCM 加密。"
+    "privacy": "屏幕、记忆与聊天默认本地处理；日志脱敏；记忆内容 AES-256-GCM 加密。",
+    "screenLearning": "只读取用户当前屏幕，不登录视频平台、不抓取视频流、不控制播放器。"
   }
 }

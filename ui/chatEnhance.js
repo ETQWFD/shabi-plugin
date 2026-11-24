@@ -61,6 +61,19 @@ export function createChatEnhance(app) {
         if (!found.length) return { text: '我这儿暂时没有相关记忆。', handled: true };
         return { text: found.map((f, i) => `${i + 1}. ${f.summary}`).join('\n'), handled: true, memories: found };
       }
+      if (/^(看视频学习|开始看视频学习|看屏幕学习)/.test(input)) {
+        const title = input.replace(/^(看视频学习|开始看视频学习|看屏幕学习)\s*/, '').trim();
+        const result = app.screenStudy.start({ title: title || '屏幕视频学习' });
+        return { text: result.ok ? `开始看屏幕了，${result.intervalSec} 秒截一帧。现在播放视频，我会认字幕、记笔记。` : `启动失败：${result.error}`, handled: true, watch: result };
+      }
+      if (/^(停止看视频学习|停止看屏幕学习)$/.test(input)) {
+        const result = await app.screenStudy.stop();
+        return { text: result.ok ? `已停止。看了 ${result.frames} 帧，记了 ${result.notes} 组笔记。` : `停止失败：${result.error}`, handled: true, watch: result };
+      }
+      if (/^(看视频学习状态|看屏幕学习状态|我看到了什么)$/.test(input)) {
+        const s = app.screenStudy.getStatus();
+        return { text: s.running ? `正在看：${s.title}，已 ${s.frames} 帧，${s.notes} 组笔记。` : '当前没有在看屏幕视频。', handled: true, watch: s };
+      }
       if (/^(刷B站|刷b站|看B站|看b站|B站推荐|b站推荐)$/.test(input)) {
         const result = await app.content.bilibiliNext();
         if (!result.ok) return { text: `没能刷到内容：${result.error}`, handled: true };
@@ -160,6 +173,8 @@ function helpText() {
     '· 你记得什么 / 还记得… —— 检索记忆',
     '· 忘掉：<关键词> —— 归档相关记忆',
     '· 分析视频 <路径或URL> —— 完整分析视频',
+    '· 看视频学习 [主题] —— 眼睛看你正在播放的视频，自己记笔记',
+    '· 停止看视频学习 —— 结束并生成学习记录',
     '· 刷B站 —— 从推荐里挑一条',
     '· 学B站 <BV号或链接> —— 字幕学习并写记忆',
     '· 看小说 <链接> —— 打开小说并阅读',

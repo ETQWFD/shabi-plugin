@@ -24,6 +24,7 @@ import { VideoAnalyzer } from './core/videoAnalyzer.js';
 import { KnowledgeEngine } from './core/knowledge.js';
 import { InterestEngine } from './core/interest.js';
 import { ContentHub } from './core/content.js';
+import { ScreenStudy } from './core/screenStudy.js';
 import { ImageApi } from './core/imageApi.js';
 import { QQBot } from './core/qqBot.js';
 import { DecisionEngine } from './core/decision.js';
@@ -32,7 +33,7 @@ import { createChatEnhance, registerChatEnhance } from './ui/chatEnhance.js';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url));
 export const name = 'shabi-plugin';
-export const version = '1.1.2';
+export const version = '1.2.0';
 // Cordis 的服务可见性：声明 tools 后，Web profile 才允许直接 ctx.tools.register。
 export const inject = ['tools'];
 
@@ -82,6 +83,8 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
     await app.interest.init();
     app.content = new ContentHub(app);
     await app.content.init();
+    app.screenStudy = new ScreenStudy(app);
+    await app.screenStudy.init();
     app.imageApi = new ImageApi(app);
     await app.imageApi.init();
     app.qq = new QQBot(app);
@@ -113,6 +116,7 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
       if (app.disposed) return;
       app.disposed = true;
       app.eye.stop();
+      app.screenStudy?.dispose?.();
       app.autonomy.stopLoop();
       await app.qq.stopBot().catch(() => {});
       for (const d of app.disposers) {
@@ -505,6 +509,23 @@ async function registerTools(app, ctx) {
       },
     },
     {
+      name: 'shabi_watch',
+      description: '看屏幕视频学习：用户自己播放 B 站/课程视频，插件用眼睛定时截屏、OCR 字幕、理解画面并写知识笔记。不登录平台、不抓视频流。',
+      parameters: {
+        action: { type: 'string', required: true, description: 'start/stop/status/list' },
+        title: { type: 'string', description: '这次学习主题，例如“B站：机器学习入门”' },
+        intervalSec: { type: 'number', description: '截屏间隔秒，默认 4' },
+        maxMinutes: { type: 'number', description: '最长学习分钟，默认 60' },
+      },
+      output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
+      async execute(args) {
+        if (args.action === 'start') return JSON.stringify(app.screenStudy.start({ title: args.title, intervalSec: args.intervalSec, maxMinutes: args.maxMinutes }), null, 2);
+        if (args.action === 'stop') return JSON.stringify(await app.screenStudy.stop(), null, 2);
+        if (args.action === 'list') return JSON.stringify({ ok: true, sessions: await app.screenStudy.listSessions() }, null, 2);
+        return JSON.stringify({ ok: true, watch: app.screenStudy.getStatus() }, null, 2);
+      },
+    },
+    {
       name: 'shabi_content',
       description: '内容执行层：刷 B 站推荐、学一条 B 站视频、打开/翻页/学习小说。使用用户本人登录 Cookie，遇风控立即停止。',
       parameters: {
@@ -630,6 +651,17 @@ function setupApiRoutes(app) {
   });
 
   register('/shabi/api/status', async () => json({ ok: true, status: buildStatus(app) }));
+
+  register('/shabi/api/watch', async (req) => {
+    if (req.method === 'GET') return json({ ok: true, watch: app.screenStudy.getStatus(), sessions: await app.screenStudy.listSessions() });
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+    const action = req.body?.action || 'status';
+    if (action === 'start') return json({ ok: true, ...(app.screenStudy.start(req.body || {})) });
+    if (action === 'stop') return json({ ok: true, ...(await app.screenStudy.stop()) });
+    if (action === 'status') return json({ ok: true, watch: app.screenStudy.getStatus() });
+    if (action === 'list') return json({ ok: true, sessions: await app.screenStudy.listSessions(req.body?.limit || 10) });
+    return json(400, { ok: false, error: '未知 action' });
+  });
 
   register('/shabi/api/eye', async (req) => {
     if (req.method === 'GET') return json({ ok: true, eye: app.eye.getStatus() });
@@ -784,6 +816,8 @@ async function applyRuntimeConfig(app, next) {
   app.autonomy.config = next.autonomy;
   app.qq.config = next.qqBot;
   app.imageApi.config = next.imageApi;
+  app.content.config = next.content;
+  app.screenStudy.config = next.screenStudy;
   app.eye.config = next.eye;
   app.eye.privacy = next.eye?.privacy || app.eye.privacy;
   app.logger.setLevel(next.logging?.level || app.logger.level);
@@ -845,6 +879,7 @@ function buildStatus(app) {
     qq: app.qq.getStatus(),
     interest: app.interest.getStatus(),
     content: app.content?.getStatus?.(),
+    screenStudy: app.screenStudy?.getStatus?.(),
     safety: app.safety.getStatus(),
     personalities: app.personality.listPersonalities(),
     accounts: app.config.accounts?.platforms || [],

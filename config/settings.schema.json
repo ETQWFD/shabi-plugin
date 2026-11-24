@@ -488,6 +488,78 @@
       ]
     },
     {
+      "id": "screenStudy",
+      "title": "看视频学习（眼睛）",
+      "description": "你播放 B 站/课程视频（建议开启平台字幕/CC），插件用眼睛截屏、OCR 字幕、理解画面并写笔记。不登录平台、不抓视频流。",
+      "fields": [
+        {
+          "key": "screenStudy.enabled",
+          "label": "启用看视频学习",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "screenStudy.defaultTitle",
+          "label": "默认学习主题",
+          "type": "text",
+          "placeholder": "例如：B站：机器学习入门"
+        },
+        {
+          "key": "screenStudy.intervalSec",
+          "label": "截屏间隔（秒）",
+          "type": "number",
+          "min": 1,
+          "max": 30,
+          "default": 4,
+          "hint": "视频字幕变化快可设 2–3 秒；只看画面讲解可设 5–8 秒。"
+        },
+        {
+          "key": "screenStudy.maxMinutes",
+          "label": "最长学习（分钟）",
+          "type": "number",
+          "min": 1,
+          "max": 180,
+          "default": 60
+        },
+        {
+          "key": "screenStudy.notesEveryFrames",
+          "label": "每多少帧整理一次笔记",
+          "type": "number",
+          "min": 2,
+          "max": 30,
+          "default": 8
+        },
+        {
+          "key": "screenStudy.maxNotesPerSession",
+          "label": "每次最多笔记组",
+          "type": "number",
+          "min": 1,
+          "max": 60,
+          "default": 20
+        },
+        {
+          "key": "screenStudy.autoWriteMemory",
+          "label": "学习结果写入长期记忆",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "__action.watch.start",
+          "label": "开始看屏幕视频",
+          "type": "action",
+          "action": "watchStart",
+          "button": "开始看"
+        },
+        {
+          "key": "__action.watch.stop",
+          "label": "结束并生成学习记录",
+          "type": "action",
+          "action": "watchStop",
+          "button": "停止看"
+        }
+      ]
+    },
+    {
       "id": "autonomy",
       "title": "自主循环",
       "description": "感知 → 记忆 → 决策 → 白名单动作 → 审计 → 冷却。默认关闭，开启后受每日/每小时上限与安静时段约束。",

@@ -117,7 +117,10 @@ function renderNav() {
     a.addEventListener('click', (e) => {
       e.preventDefault();
       const target = $(`#group-${g.id}`);
-      if (target && contentEl) contentEl.scrollTo({ top: Math.max(0, target.offsetTop - 8), behavior: 'smooth' });
+      if (target && contentEl) {
+        const top = target.getBoundingClientRect().top - contentEl.getBoundingClientRect().top + contentEl.scrollTop - 8;
+        contentEl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
       $$('.nav a').forEach((x) => x.classList.remove('active'));
       a.classList.add('active');
     });
@@ -923,6 +926,15 @@ async function runAction(action, btn) {
     } else if (action === 'accountsCheck') {
       for (const p of state.accounts) await checkPlatform(p.platform);
       toast('授权状态已刷新', 'ok');
+    } else if (action === 'watchStart') {
+      const cfg = collectAll().screenStudy || {};
+      const data = await api('/watch', { method: 'POST', body: { action: 'start', title: cfg.defaultTitle, intervalSec: cfg.intervalSec, maxMinutes: cfg.maxMinutes }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '启动失败');
+      toast('开始看屏幕了。现在播放视频，我会截屏、认字幕、记笔记。', 'ok');
+    } else if (action === 'watchStop') {
+      const data = await api('/watch', { method: 'POST', body: { action: 'stop' }, allowFail: true });
+      if (!data.ok) throw new Error(data.error || '停止失败');
+      showResultModal('看视频学习结束', { frames: data.frames, notes: data.notes, durationSec: data.durationSec, title: data.title, message: data.message }, true);
     } else if (action === 'eyeTest') {
       const data = await api('/eye', { method: 'POST', body: { action: 'test' }, allowFail: true });
       if (!data.ok || !data.result) throw new Error(data.error || '没有拿到屏幕内容');
