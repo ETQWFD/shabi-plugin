@@ -165,7 +165,7 @@
       "dedupeWindow": 600
     },
     "proactive": {
-      "enabled": false,
+      "enabled": true,
       "maxPerDay": 2,
       "minGapMin": 120,
       "maxAgeHours": 72,

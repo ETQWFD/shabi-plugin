@@ -1397,7 +1397,7 @@
           "key": "qqBot.proactive.enabled",
           "label": "允许主动 QQ 消息",
           "type": "boolean",
-          "default": false,
+          "default": true,
           "hint": "只发给你最近私聊的 C2C；每日/间隔/安静时段全部生效；你说“别发了”会停止 7 天。"
         },
         {
