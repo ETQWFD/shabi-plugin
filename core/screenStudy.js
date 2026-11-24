@@ -52,6 +52,7 @@ export class ScreenStudy {
     if (this.timer) return { ok: true, ...this.getStatus(), message: '已经在看屏幕视频了' };
     if (this.config.enabled === false) return { ok: false, error: '看视频学习已在设置里关闭' };
     if (this.eye?.paused) return { ok: false, error: '眼睛当前被暂停，请先在设置页恢复屏幕识别' };
+    if (this.eye?.config?.enabled === false) return { ok: false, error: '屏幕识别已在设置里关闭，请先开启眼睛' };
     const intervalSec = Math.max(1, Math.min(30, Number(options.intervalSec || this.config.intervalSec || 4)));
     const maxMinutes = Math.max(1, Math.min(180, Number(options.maxMinutes || this.config.maxMinutes || 60)));
     this.session = {

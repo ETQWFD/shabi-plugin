@@ -7,7 +7,7 @@ import { makeApp } from './helpers.js';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('看屏幕视频学习：截屏帧 → OCR 文本 → 笔记 → 学习文件 → 长期记忆', async () => {
-  const { app, cleanup } = await makeApp({ prefix: 'watch', rawHost: {}, config: { eye: { enabled: false, mode: 'manual' } } });
+  const { app, cleanup } = await makeApp({ prefix: 'watch', rawHost: {}, config: { eye: { enabled: true, mode: 'manual' } } });
   try {
     let n = 0;
     app.eye.getScreenContext = async () => {
@@ -49,7 +49,7 @@ test('看屏幕视频学习：截屏帧 → OCR 文本 → 笔记 → 学习文�
 });
 
 test('看屏幕视频学习：停止后可以再次开始，且重复画面不堆帧', async () => {
-  const { app, cleanup } = await makeApp({ prefix: 'watch2', rawHost: {}, config: { eye: { enabled: false, mode: 'manual' } } });
+  const { app, cleanup } = await makeApp({ prefix: 'watch2', rawHost: {}, config: { eye: { enabled: true, mode: 'manual' } } });
   try {
     let same = true;
     app.eye.getScreenContext = async () => ({
