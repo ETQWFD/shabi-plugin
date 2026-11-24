@@ -379,6 +379,13 @@
           "min": 60,
           "max": 1800,
           "default": 600
+        },
+        {
+          "key": "video.useLlm",
+          "label": "视频摘要调用模型",
+          "type": "boolean",
+          "default": false,
+          "hint": "关闭时只用逐帧/字幕抽取，插件加载后不跑深度思考。"
         }
       ]
     },
@@ -432,7 +439,8 @@
           "key": "content.novel.defaultUrl",
           "label": "默认小说地址",
           "type": "text",
-          "placeholder": "https://example.com/book/123.html"
+          "placeholder": "https://example.com/book/123.html",
+          "hint": "留空则从公版中文小说目录自动挑一本（三国演义/西游记/水浒传/红楼梦/聊斋志异）。"
         },
         {
           "key": "content.novel.cookie",
@@ -465,6 +473,49 @@
           "default": 20
         },
         {
+          "key": "content.bilibili.autoFavorite",
+          "label": "写入 B 站收藏夹",
+          "type": "boolean",
+          "default": true,
+          "hint": "需要 B 站 Cookie 含 bili_jct；失败时仍保留本地收藏。"
+        },
+        {
+          "key": "content.bilibili.favoriteFolder",
+          "label": "B 站收藏夹名称",
+          "type": "text",
+          "default": "DeepSeek的收藏夹"
+        },
+        {
+          "key": "content.douyin.enabled",
+          "label": "启用抖音观看",
+          "type": "boolean",
+          "default": true,
+          "hint": "搜索通常需要登录 Cookie；直接视频链接可无 Cookie 尝试。"
+        },
+        {
+          "key": "content.douyin.cookie",
+          "label": "抖音 Cookie",
+          "type": "password"
+        },
+        {
+          "key": "content.kuaishou.enabled",
+          "label": "启用快手观看",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "content.kuaishou.cookie",
+          "label": "快手 Cookie",
+          "type": "password"
+        },
+        {
+          "key": "content.learning.useLlm",
+          "label": "学习时调用模型整理",
+          "type": "boolean",
+          "default": false,
+          "hint": "关闭时规则抽取，加载后直接输出，不跑深度思考。"
+        },
+        {
           "key": "__action.content.feed",
           "label": "立即刷一条 B 站",
           "type": "action",
@@ -484,6 +535,13 @@
           "type": "action",
           "action": "contentLearn",
           "button": "学一条"
+        },
+        {
+          "key": "__action.media.favorites",
+          "label": "刷新收藏夹",
+          "type": "action",
+          "action": "mediaFavorites",
+          "button": "刷新"
         }
       ]
     },
@@ -655,6 +713,126 @@
           "label": "学习目录",
           "type": "readonly",
           "default": "~/.dsh/shabi/study/inbox"
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "title": "平台自主学习",
+      "description": "按兴趣自己搜索并看 B 站/抖音/快手视频；下载后逐帧理解、总结写记忆、收藏。连续看几条后休息，休息时读小说。",
+      "fields": [
+        {
+          "key": "media.enabled",
+          "label": "启用平台自主学习",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "media.platforms",
+          "label": "平台顺序",
+          "type": "list",
+          "default": [
+            "bilibili",
+            "douyin",
+            "kuaishou"
+          ],
+          "hint": "每行一个：bilibili/douyin/kuaishou"
+        },
+        {
+          "key": "media.topics",
+          "label": "想看的主题",
+          "type": "list",
+          "default": [],
+          "hint": "留空则按长期记忆和兴趣画像自动生成"
+        },
+        {
+          "key": "media.maxVideosPerDay",
+          "label": "每天最多看几条",
+          "type": "number",
+          "min": 1,
+          "max": 30,
+          "default": 8
+        },
+        {
+          "key": "media.restAfterVideos",
+          "label": "看几条后休息",
+          "type": "number",
+          "min": 1,
+          "max": 20,
+          "default": 3
+        },
+        {
+          "key": "media.restMinutes",
+          "label": "休息时长（分钟）",
+          "type": "number",
+          "min": 1,
+          "max": 180,
+          "default": 20
+        },
+        {
+          "key": "media.novelWhenTired",
+          "label": "休息时读小说",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "media.novelUrl",
+          "label": "小说地址",
+          "type": "text",
+          "hint": "留空则按公版目录自动挑一本（三国演义/西游记/水浒传/红楼梦/聊斋志异）。"
+        },
+        {
+          "key": "media.maxVideoSeconds",
+          "label": "单条视频最长秒数",
+          "type": "number",
+          "min": 60,
+          "max": 7200,
+          "default": 1800
+        },
+        {
+          "key": "media.maxDownloadMB",
+          "label": "单条下载上限 MB",
+          "type": "number",
+          "min": 10,
+          "max": 4096,
+          "default": 500
+        },
+        {
+          "key": "media.autoFavorite",
+          "label": "看完自动收藏",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "media.downloadTool",
+          "label": "下载工具",
+          "type": "text",
+          "default": "yt-dlp",
+          "hint": "抖音/快手需要本机已有 yt-dlp；不会自动安装"
+        },
+        {
+          "key": "__action.media.tick",
+          "label": "立即看一个",
+          "type": "action",
+          "action": "mediaTick",
+          "button": "开始看"
+        },
+        {
+          "key": "__action.media.favorites",
+          "label": "收藏夹",
+          "type": "action",
+          "action": "mediaFavorites",
+          "button": "刷新"
+        },
+        {
+          "key": "__list.favorites",
+          "label": "最近收藏",
+          "type": "favoriteList"
+        },
+        {
+          "key": "__readonly.media.status",
+          "label": "当前状态",
+          "type": "readonly"
         }
       ]
     },
@@ -1401,12 +1579,26 @@
           "hint": "只发给你最近私聊的 C2C；每日/间隔/安静时段全部生效；你说“别发了”会停止 7 天。"
         },
         {
+          "key": "qqBot.proactive.unansweredBeforeFinal",
+          "label": "连续未回几条后发最后一条",
+          "type": "number",
+          "min": 1,
+          "max": 20,
+          "default": 6
+        },
+        {
+          "key": "qqBot.proactive.awayAfterFinal",
+          "label": "最后一条后进入 away 模式",
+          "type": "boolean",
+          "default": true
+        },
+        {
           "key": "qqBot.proactive.maxPerDay",
           "label": "主动消息每日上限",
           "type": "number",
           "min": 0,
           "max": 5,
-          "default": 2
+          "default": 7
         },
         {
           "key": "qqBot.proactive.minGapMin",
@@ -1414,7 +1606,7 @@
           "type": "number",
           "min": 30,
           "max": 1440,
-          "default": 120
+          "default": 30
         },
         {
           "key": "qqBot.proactive.maxAgeHours",

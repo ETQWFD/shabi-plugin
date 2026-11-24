@@ -87,6 +87,20 @@ export function createChatEnhance(app) {
         const s = app.screenStudy.getStatus();
         return { text: s.running ? `正在看：${s.title}，已 ${s.frames} 帧，${s.notes} 组笔记。` : '当前没有在看屏幕视频。', handled: true, watch: s };
       }
+      if (/^(自己去看视频|自己刷视频|自主看视频|去刷视频|自己找视频看|开始自主观看)$/.test(input)) {
+        const result = await app.media.tick({ manual: true });
+        if (result.started) return { text: `我自己去找了：${result.candidate?.title || '一条视频'}，看完会总结、记进脑子。`, handled: true, media: result };
+        if (result.action === 'novel') return { text: `先休息一下，读会儿小说：${result.title || '当前章节'}。`, handled: true, media: result };
+        return { text: `这次没开始：${result.reason === 'media-running' ? '正在看一条，等我看完' : result.reason === 'daily-video-limit' ? '今天已经看够了' : '暂时没找到合适的'}`, handled: true, media: result };
+      }
+      if (/^(平台学习状态|刷视频状态|自己学到哪了|自主学习视频状态)$/.test(input)) {
+        const st = app.media.getStatus();
+        return { text: `模式 ${st.mode}；今天 ${st.videosToday}/${st.maxVideosPerDay} 条；连续 ${st.videosSinceRest}/${st.restAfterVideos} 条后休息；收藏 ${st.favorites?.favoriteCount ?? 0} 条。${st.lastResult?.title ? `\n最近：${st.lastResult.title}` : ''}`, handled: true, media: st };
+      }
+      if (/^(收藏夹|我的收藏|看看收藏)$/.test(input)) {
+        const items = await app.content.listFavorites(20);
+        return { text: items.length ? items.slice(0, 10).map((x, i) => `${i + 1}. ${x.title}（${x.platform}）`).join('\n') : '收藏夹还是空的。', handled: true, favorites: items };
+      }
       if (/^(刷B站|刷b站|看B站|看b站|B站推荐|b站推荐)$/.test(input)) {
         const result = await app.content.bilibiliNext();
         if (!result.ok) return { text: `没能刷到内容：${result.error}`, handled: true };
@@ -94,8 +108,28 @@ export function createChatEnhance(app) {
       }
       if (/^(学B站|学b站|学习B站)\s+/.test(input)) {
         const target = input.replace(/^(学B站|学b站|学习B站)\s+/, '').trim();
-        const result = await app.content.bilibiliLearn(target);
-        return { text: result.ok ? `学完了：${result.title}，记了 ${result.notes?.length || 0} 条。` : `学习失败：${result.error}`, handled: true, content: result };
+        const result = await app.content.bilibiliWatch(target);
+        return { text: result.ok ? `看完了：${result.title}，记了 ${result.notes?.length || 0} 条，${result.favorite ? '已收藏' : '已写记忆'}。` : `学习失败：${result.error}`, handled: true, content: result };
+      }
+      if (/^(看小说|读小说)$/.test(input)) {
+        const configured = app.config?.content?.novel?.defaultUrl || app.config?.media?.novelUrl || '';
+        let url = configured;
+        if (!url) {
+          const found = await app.content.novelSearch('');
+          url = found.items?.[0]?.url || '';
+        }
+        if (!url) return { text: '没有找到可读的公版小说。', handled: true };
+        const result = await app.content.novelOpen(url);
+        if (result.ok && result.chapterLinks?.length) await app.content.novelNext().catch(() => {});
+        return { text: result.ok ? `《${result.title}》已打开，${result.paragraphs.length} 段。` : `没能打开：${result.error}`, handled: true, content: result };
+      }
+      if (/^(找小说|搜小说)\s+/.test(input)) {
+        const keyword = input.replace(/^(找小说|搜小说)\s+/, '').trim();
+        const found = await app.content.novelSearch(keyword);
+        if (!found.items?.length) return { text: '没有找到可读的公版小说。', handled: true };
+        const result = await app.content.novelOpen(found.items[0].url);
+        if (result.ok && result.chapterLinks?.length) await app.content.novelNext().catch(() => {});
+        return { text: result.ok ? `找到并打开《${found.items[0].title}》：${result.title}` : `找到但打不开：${result.error}`, handled: true, content: result };
       }
       if (/^(看小说|读小说)\s+/.test(input)) {
         const url = input.replace(/^(看小说|读小说)\s+/, '').trim();
@@ -190,9 +224,12 @@ function helpText() {
     '· 加入学习 <文件路径> —— 放进自主学习队列',
     '· 看视频学习 [主题] —— 眼睛看你正在播放的视频，自己记笔记',
     '· 停止看视频学习 —— 结束并生成学习记录',
+    '· 自己去看视频 / 开始自主观看 —— 自己搜索并看一条平台视频',
+    '· 平台学习状态 —— 今天看了多少、什么时候休息',
+    '· 收藏夹 —— 看看看完存下来的内容',
     '· 刷B站 —— 从推荐里挑一条',
-    '· 学B站 <BV号或链接> —— 字幕学习并写记忆',
-    '· 看小说 <链接> —— 打开小说并阅读',
+    '· 学B站 <BV号或链接> —— 下载完整看完并写记忆',
+    '· 看小说 / 找小说 <关键词> —— 搜索公版小说并阅读',
     '· 下一章 —— 继续读当前小说',
     '· 切换人格 <名称> —— 切换人格',
     '· 开始自主 / 停止自主 —— 控制自主循环',

@@ -12,7 +12,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { Mutex, nowIso, shortHash, textSummary, withTimeout, safeJsonParse } from '../lib/util.js';
+import { Mutex, nowIso, shortHash, textSummary, withTimeout, safeJsonParse, sleep } from '../lib/util.js';
+import { runCommand } from '../lib/host.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const BILI_REFERER = 'https://www.bilibili.com/';
@@ -68,6 +69,15 @@ function paragraphsFromHtml(html) {
   return blocks;
 }
 
+function parseBiliDuration(value) {
+  if (typeof value === 'number') return value;
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.some((x) => Number.isNaN(x))) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
 function normalizeBiliItem(item = {}) {
   const owner = item.owner || item.up || {};
   const stat = item.stat || {};
@@ -80,7 +90,7 @@ function normalizeBiliItem(item = {}) {
     author: String(owner.name || owner.mid || '').slice(0, 100),
     cover: String(item.pic || item.cover || ''),
     url: bvid ? `https://www.bilibili.com/video/${bvid}` : String(item.url || ''),
-    duration: Number(item.duration || item.duration_seconds || 0),
+    duration: parseBiliDuration(item.duration ?? item.duration_seconds ?? 0),
     desc: String(item.desc || item.description || '').slice(0, 500),
     views: Number(stat.view || item.play || 0),
     tags: Array.isArray(item.tags) ? item.tags.map(String).slice(0, 8) : [],
@@ -100,6 +110,8 @@ export class ContentHub {
     this.dir = path.join(ctx.paths.data, 'content');
     this.novelDir = path.join(this.dir, 'novels');
     this.stateFile = path.join(this.dir, 'state.json');
+    this.favoritesFile = path.join(this.dir, 'favorites.json');
+    this.favorites = [];
     this.mutex = new Mutex();
     this.state = { bilibili: { lastFeed: [], lastAt: null, lastError: null }, novel: { current: null, history: [] } };
     this.wbiCache = null;
@@ -107,6 +119,7 @@ export class ContentHub {
 
   async init() {
     await fs.mkdir(this.novelDir, { recursive: true });
+    this.favorites = await fs.readFile(this.favoritesFile, 'utf8').then(JSON.parse).catch(() => []);
     this.state = (await fs.readFile(this.stateFile, 'utf8').then(JSON.parse).catch(() => null)) || this.state;
     this.state.bilibili ||= { lastFeed: [], lastAt: null, lastError: null };
     this.state.novel ||= { current: null, history: [] };
@@ -119,6 +132,7 @@ export class ContentHub {
 
   getStatus() {
     return {
+      media: { favorites: this.favorites.slice(-20), favoriteCount: this.favorites.length },
       bilibili: {
         enabled: this.config.bilibili?.enabled !== false,
         cookieConfigured: Boolean(this.config.bilibili?.cookie),
@@ -137,10 +151,11 @@ export class ContentHub {
 
   // ───────────────────────── HTTP / B 站 ─────────────────────────
 
-  async #fetch(url, { headers = {}, timeoutMs = 30000, cookie = '' } = {}) {
-    const h = { 'user-agent': UA, accept: '*/*', ...headers };
+  async #fetch(url, { headers = {}, timeoutMs = 30000, cookie = '', userAgent = UA, ...init } = {}) {
+    const h = { accept: '*/*', ...headers };
+    if (userAgent) h['user-agent'] = userAgent;
     if (cookie) h.cookie = cookie;
-    const res = await withTimeout(fetch(url, { headers: h, redirect: 'follow' }), timeoutMs, '内容请求');
+    const res = await withTimeout(fetch(url, { headers: h, redirect: 'follow', ...init }), timeoutMs, '内容请求');
     if (res.status === 412 || res.status === 403) {
       throw new Error(`平台返回 ${res.status}：需要登录或被风控拦截，已停止。请在设置页更新 Cookie 后重试，不要尝试绕过。`);
     }
@@ -153,6 +168,7 @@ export class ContentHub {
     return {
       referer: BILI_REFERER,
       origin: 'https://www.bilibili.com',
+      accept: 'application/json, text/plain, */*',
       ...(cookie ? { cookie } : {}),
       ...extra,
     };
@@ -166,13 +182,42 @@ export class ContentHub {
       Object.assign(q, this.#wbiSign(q, keys));
     }
     for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
-    const res = await this.#fetch(u, { headers: this.#biliHeaders(), cookie: cookie ? this.config.bilibili?.cookie : '' });
-    const json = await res.json().catch(() => null);
-    if (!json) throw new Error('B 站返回了非 JSON 内容');
-    if (json.code !== 0) {
-      const risk = [-352, -412, -509, -799].includes(json.code);
-      throw new Error(`B 站接口 code=${json.code}：${json.message || '未知错误'}${risk ? '（触发风控/需要登录，已停止）' : ''}`);
+    // B 站 API 对浏览器 UA 反而会返回 412；这里使用空 UA，仍带 Cookie/WBI。
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const res = await this.#fetch(u, { headers: this.#biliHeaders(), cookie: cookie ? this.config.bilibili?.cookie : '', userAgent: '' });
+        const json = await res.json().catch(() => null);
+        if (!json) throw new Error('B 站返回了非 JSON 内容');
+        if (json.code !== 0) {
+          const risk = [-352, -412, -509, -799].includes(json.code);
+          const msg = `B 站接口 code=${json.code}：${json.message || '未知错误'}${risk ? '（平台限流，稍后重试）' : ''}`;
+          if (risk && attempt < 2) { await sleep(1200 * (attempt + 1)); continue; }
+          throw new Error(msg);
+        }
+        return json.data;
+      } catch (err) {
+        lastError = err;
+        if (attempt < 2 && /限流|412|352|509|799|timeout|fetch|network/i.test(err.message)) { await sleep(1200 * (attempt + 1)); continue; }
+        throw err;
+      }
     }
+    throw lastError || new Error('B 站接口失败');
+  }
+
+  async #biliPostForm(pathname, body) {
+    const url = `https://api.bilibili.com${pathname}`;
+    const cookie = String(this.config.bilibili?.cookie || '');
+    const res = await this.#fetch(url, {
+      method: 'POST',
+      headers: { ...this.#biliHeaders(), 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body || {}).toString(),
+      cookie,
+      userAgent: '',
+    });
+    const json = await res.json().catch(() => null);
+    if (!json) throw new Error('B 站返回非 JSON');
+    if (json.code !== 0) throw new Error(`B 站接口 code=${json.code}：${json.message || '未知错误'}`);
     return json.data;
   }
 
@@ -226,6 +271,39 @@ export class ContentHub {
     }
   }
 
+  /** 公开搜索：不需要登录，返回视频候选；用于自主选择要看的视频。 */
+  async bilibiliSearch(keyword, { limit = 12 } = {}) {
+    const q = String(keyword || '').trim().slice(0, 80);
+    if (!q) return { ok: false, error: '搜索词为空', items: [] };
+    try {
+      const data = await this.#biliJson('https://api.bilibili.com/x/web-interface/search/type', {
+        params: { search_type: 'video', keyword: q, page: 1 },
+        cookie: false,
+      });
+      const raw = data?.result || [];
+      const items = raw.map((item) => ({
+        platform: 'bilibili',
+        id: String(item.bvid || item.aid || ''),
+        bvid: String(item.bvid || ''),
+        title: stripHtml(item.title || '').slice(0, 200),
+        author: String(item.author || '').slice(0, 100),
+        cover: String(item.pic || '').startsWith('//') ? `https:${item.pic}` : String(item.pic || ''),
+        url: item.bvid ? `https://www.bilibili.com/video/${item.bvid}` : '',
+        duration: parseBiliDuration(item.duration),
+        desc: stripHtml(item.description || '').slice(0, 300),
+        views: Number(item.play || 0),
+        tags: String(item.tag || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8),
+        publishedAt: item.pubdate ? new Date(Number(item.pubdate) * 1000).toISOString() : '',
+        quality: Math.min(1, Math.log10(Math.max(1, Number(item.play || 0))) / 7),
+      })).filter((x) => x.bvid && x.title).slice(0, Math.max(1, Math.min(30, Number(limit || 12))));
+      this.state.search = { keyword: q, at: nowIso(), count: items.length };
+      await this.#saveState();
+      return { ok: true, keyword: q, items, at: nowIso() };
+    } catch (err) {
+      return { ok: false, keyword: q, error: err.message, items: [] };
+    }
+  }
+
   /** 从推荐里挑下一条，使用已有兴趣画像排序；不会自动无限刷。 */
   async bilibiliNext({ limit = 12 } = {}) {
     const feed = await this.bilibiliFeed({ limit, fresh: true });
@@ -244,7 +322,24 @@ export class ContentHub {
   }
 
   async #biliView(bvid) {
-    return this.#biliJson('https://api.bilibili.com/x/web-interface/view', { params: { bvid } });
+    try {
+      const data = await this.#biliJson('https://api.bilibili.com/x/web-interface/view', { params: { bvid } });
+      if (data?.cid) return data;
+    } catch (err) {
+      this.logger?.debug?.('B 站 view 接口不可用，回退 detail/pagelist', { bvid, error: err.message });
+    }
+    // public detail 接口通常仍可用，且包含 pages/cid。
+    try {
+      const detail = await this.#biliJson('https://api.bilibili.com/x/web-interface/view/detail', { params: { bvid } });
+      const view = detail?.View || detail;
+      if (view?.cid || view?.pages?.length) return view;
+    } catch (err) {
+      this.logger?.debug?.('B 站 detail 接口不可用，回退 pagelist', { bvid, error: err.message });
+    }
+    const pages = await this.#biliJson('https://api.bilibili.com/x/player/pagelist', { params: { bvid } });
+    const first = pages?.[0];
+    if (!first?.cid) throw new Error('无法取得视频 cid');
+    return { bvid, cid: first.cid, pages, title: bvid, duration: first.duration || 0 };
   }
 
   async #biliSubtitles(bvid, cid) {
@@ -269,9 +364,9 @@ export class ContentHub {
     }
   }
 
-  async #download(url, file, { headers = {}, maxMB = 200 } = {}) {
+  async #download(url, file, { headers = {}, maxMB = 200, userAgent = UA } = {}) {
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const res = await this.#fetch(url, { headers, timeoutMs: 120000 });
+    const res = await this.#fetch(url, { headers, timeoutMs: 120000, userAgent });
     const len = Number(res.headers.get('content-length') || 0);
     if (len > maxMB * 1024 * 1024) throw new Error(`视频超过下载上限 ${maxMB}MB，已停止`);
     if (!res.body) throw new Error('下载响应没有 body');
@@ -330,7 +425,7 @@ export class ContentHub {
       const durl = play?.durl?.[0]?.url || play?.dash?.video?.[0]?.baseUrl;
       if (!durl) throw new Error('没有拿到可下载的视频地址（可能需要登录 Cookie）');
       const file = path.join(this.dir, 'bilibili', `${bvid}.mp4`);
-      await this.#download(durl, file, { headers: this.#biliHeaders(), maxMB: Number(this.config.bilibili?.maxDownloadMB || 200) });
+      await this.#download(durl, file, { headers: this.#biliHeaders(), maxMB: Number(this.config.bilibili?.maxDownloadMB || 200), userAgent: '' });
       const entry = await this.video.registerVideo({ kind: 'file', value: file, title, headers: null }, { title });
       this.video.run(entry.videoId, { mode: 'hybrid' }).catch((err) => this.logger?.warn?.('B 站视频分析失败', { bvid, error: err.message }));
       return { ok: true, bvid, title, mode: 'download', videoId: entry.videoId, file, message: '已下载并开始完整视频分析；完成后可抽取知识。' };
@@ -339,6 +434,276 @@ export class ContentHub {
       await this.#saveState().catch(() => {});
       return { ok: false, error: err.message, bvid };
     }
+  }
+
+  async addFavorite(entry = {}) {
+    const title = String(entry.title || '').slice(0, 220);
+    const url = String(entry.url || '').slice(0, 1200);
+    if (!title) throw new Error('收藏标题为空');
+    const id = `fav-${shortHash(`${entry.platform || 'local'}|${entry.id || url}|${title}`).slice(0, 12)}`;
+    if (this.favorites.some((x) => x.id === id)) return this.favorites.find((x) => x.id === id);
+    const favorite = {
+      id, platform: String(entry.platform || 'local'), sourceId: String(entry.id || '').slice(0, 120),
+      title, url, author: String(entry.author || '').slice(0, 120),
+      summary: String(entry.summary || '').slice(0, 1200),
+      tags: Array.isArray(entry.tags) ? entry.tags.map(String).slice(0, 12) : [],
+      important: entry.important !== false,
+      noteFile: entry.noteFile || null,
+      addedAt: nowIso(),
+    };
+    this.favorites.push(favorite);
+    this.favorites = this.favorites.slice(-2000);
+    await fs.writeFile(this.favoritesFile, `${JSON.stringify(this.favorites, null, 2)}\n`, { mode: 0o600 });
+    this.ctx.host.ui?.emit?.('shabi:favorite-added', favorite);
+    return favorite;
+  }
+
+  async listFavorites(limit = 100) {
+    return this.favorites.slice(-Math.max(1, Math.min(500, Number(limit || 100)))).reverse();
+  }
+
+  /** 把一个已下载视频完整逐帧看完，写笔记/记忆并收藏。 */
+  async #watchAndLearnFile(file, { title, platform = 'bilibili', url = '', id = '', tags = [], autoWrite = null, favorite = true, subtitleText = '', description = '' }) {
+    const entry = await this.video.registerVideo({ kind: 'file', value: file, title }, { title, mode: 'hybrid' });
+    this.logger?.info('开始观看视频文件', { title, platform, videoId: entry.videoId, duration: entry.duration });
+    const status = await this.video.run(entry.videoId, { mode: 'hybrid' });
+    const artifacts = await this.video.readArtifacts(entry.videoId).catch(() => null);
+    const rawSummary = status?.summary || artifacts?.summary?.summary || '';
+    const summary = (!rawSummary || /未能生成摘要|内容较少/.test(rawSummary))
+      ? (textSummary([description, subtitleText].filter(Boolean).join(' '), 300) || title || rawSummary)
+      : rawSummary;
+    const keyPoints = artifacts?.summary?.keyPoints || [];
+    const transcript = (artifacts?.transcript?.segments || []).map((s) => s.text).filter(Boolean).join('\n').slice(0, 5000);
+    const visual = (artifacts?.segments?.segments || []).filter((s) => s.speechText && s.speechText.length > 8)
+      .slice(0, 40).map((s) => `[${Math.floor(Number(s.start || 0))}s] ${s.speechText}`).join('\n');
+    const text = [summary, description, keyPoints.length ? `要点：${keyPoints.join('；')}` : '', subtitleText, transcript, visual]
+      .filter(Boolean).join('\n\n').slice(0, 16000) || `${title}：视频已完成逐帧观看。`;
+    const learned = await this.learnText({
+      title, text, source: `${platform}:${id || entry.videoId}`, url,
+      tags: ['视频', platform, ...(tags || [])], autoWrite,
+    });
+    let favoriteEntry = null;
+    if (favorite) {
+      favoriteEntry = await this.addFavorite({
+        platform, id: id || entry.videoId, title, url, author: '',
+        summary: summary || learned.summary, tags: ['视频', platform, ...(tags || [])],
+        noteFile: learned.noteFile, important: keyPoints.length > 0 || summary.length > 80,
+      }).catch((err) => { this.logger?.warn('本地收藏失败', { error: err.message }); return null; });
+    }
+    if (id) await this.interest.feedback(id, 'complete', { tags: ['视频', platform, ...(tags || [])], title }).catch(() => {});
+    this.state.lastWatch = { title, platform, url, videoId: entry.videoId, at: nowIso(), summary: summary.slice(0, 300), favoriteId: favoriteEntry?.id || null };
+    await this.#saveState().catch(() => {});
+    return {
+      ok: true, title, platform, videoId: entry.videoId, mode: 'frame',
+      summary, keyPoints, noteFile: learned.noteFile, memoryIds: learned.memoryIds, favorite: favoriteEntry,
+      duration: entry.duration,
+    };
+  }
+
+  /** 用 yt-dlp 处理抖音/快手等平台 URL；不存在时尝试站点 HTML 解析。 */
+  async watchUrl(url, { platform = '', title = '', autoWrite = null, favorite = true } = {}) {
+    const target = String(url || '').trim();
+    if (!/^https?:\/\//i.test(target)) return { ok: false, error: '需要 http(s) 视频页面地址' };
+    if (!platform) platform = /douyin/i.test(target) ? 'douyin' : /kuaishou/i.test(target) ? 'kuaishou' : 'web';
+    if (platform === 'bilibili') return this.bilibiliWatch(target, { autoWrite, favorite });
+    const maxSeconds = Number(this.config.media?.maxVideoSeconds || this.ctx.config.video?.maxVideoSeconds || 1800);
+    const maxMB = Number(this.config.media?.maxDownloadMB || 500);
+    try {
+      const meta = await this.#ytDlpInfo(target, { platform });
+      if (meta.duration && meta.duration > maxSeconds + 5) {
+        return { ok: false, error: `视频 ${Math.round(meta.duration)} 秒，超过单次观看上限 ${maxSeconds} 秒`, platform, url: target, title: meta.title || title };
+      }
+      const file = path.join(this.dir, 'videos', `${platform}-${shortHash(target).slice(0, 10)}.mp4`);
+      await this.#ytDlpDownload(target, file, { platform, maxMB });
+      return await this.#watchAndLearnFile(file, {
+        title: title || meta.title || target, platform, url: target,
+        id: meta.id || shortHash(target), tags: meta.tags || [], autoWrite, favorite, description: meta.description || '', subtitleText: meta.subtitles ? Object.values(meta.subtitles).flat().map((x) => x.data || '').join('\n') : '',
+      });
+    } catch (err) {
+      if (platform === 'kuaishou') {
+        const fallback = await this.#watchKuaishouHtml(target, { title, autoWrite, favorite }).catch((e2) => ({ ok: false, error: e2.message }));
+        if (fallback.ok) return fallback;
+      }
+      return { ok: false, error: err.message, platform, url: target, title };
+    }
+  }
+
+  /** 公开搜索；B 站可直接搜，抖音/快手有登录 Cookie 时走站点接口，失败返回明确原因。 */
+  async platformSearch(platform, keyword, { limit = 10 } = {}) {
+    if (platform === 'bilibili') return this.bilibiliSearch(keyword, { limit });
+    if (platform === 'douyin') {
+      const cookie = String(this.config.douyin?.cookie || '');
+      if (!cookie) return { ok: false, platform, error: '抖音搜索需要登录 Cookie；可先直接给视频链接', items: [] };
+      try {
+        const res = await this.#fetch('https://www.douyin.com/aweme/v1/web/search/item/?keyword=' + encodeURIComponent(keyword) + '&device_platform=webapp&aid=6383&channel=channel_pc_web&search_channel=aweme_video_web&search_source=normal_search', {
+          headers: { referer: 'https://www.douyin.com/', accept: 'application/json' }, cookie, userAgent: UA,
+        });
+        const json = await res.json();
+        const list = json?.data?.data || json?.aweme_list || [];
+        const items = list.map((x) => ({
+          platform: 'douyin', id: String(x.aweme_id || x.awemeId || ''), title: String(x.desc || '').slice(0, 200),
+          author: String(x.author?.nickname || '').slice(0, 100),
+          url: x.aweme_id ? `https://www.douyin.com/video/${x.aweme_id}` : '',
+          duration: Number(x.video?.duration || 0) / 1000,
+          desc: String(x.desc || '').slice(0, 300),
+          quality: Math.min(1, Math.log10(Math.max(1, Number(x.statistics?.digg_count || 1))) / 6),
+          tags: String(x.desc || '').match(/[\u4e00-\u9fff]{2,6}|[a-zA-Z]{4,}/g)?.slice(0, 8) || [],
+        })).filter((x) => x.id && x.url).slice(0, limit);
+        return { ok: items.length > 0, platform, keyword, items, error: items.length ? null : '没有搜到视频' };
+      } catch (err) {
+        return { ok: false, platform, error: err.message, items: [] };
+      }
+    }
+    if (platform === 'kuaishou') {
+      const cookie = String(this.config.kuaishou?.cookie || '');
+      try {
+        const res = await this.#fetch('https://www.kuaishou.com/search/video?searchKey=' + encodeURIComponent(keyword), {
+          headers: { accept: 'text/html', referer: 'https://www.kuaishou.com/' }, cookie, userAgent: UA,
+        });
+        const html = await res.text();
+        const items = this.#parseKuaishouSearch(html).slice(0, limit);
+        return { ok: items.length > 0, platform, keyword, items, error: items.length ? null : '快手搜索页没有解析到视频（可能需要登录 Cookie）' };
+      } catch (err) {
+        return { ok: false, platform, error: err.message, items: [] };
+      }
+    }
+    return { ok: false, platform, error: '未知平台', items: [] };
+  }
+
+  async #ytDlpInfo(url, { platform = 'web' } = {}) {
+    const bin = String(this.config.media?.downloadTool || 'yt-dlp');
+    const args = ['--no-warnings', '--no-playlist', '--skip-download', '--dump-json', '--socket-timeout', '30'];
+    if (platform === 'douyin' || platform === 'kuaishou') args.push('--user-agent', UA);
+    if (this.config[platform]?.cookie) args.push('--add-header', `Cookie:${this.config[platform].cookie}`);
+    args.push(url);
+    const { stdout } = await runCommand(bin, args, { timeoutMs: 60000 });
+    const line = String(stdout || '').split('\n').map((x) => x.trim()).find((x) => x.startsWith('{'));
+    if (!line) throw new Error('yt-dlp 没有返回视频信息');
+    return safeJsonParse(line, null) || {};
+  }
+
+  async #ytDlpDownload(url, file, { platform = 'web', maxMB = 500 } = {}) {
+    const bin = String(this.config.media?.downloadTool || 'yt-dlp');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const args = [
+      '--no-warnings', '--no-progress', '--no-playlist', '--force-overwrites',
+      '--socket-timeout', '30', '--retries', '3', '--max-filesize', `${maxMB}M`,
+      '-f', 'bv*[height<=720]+ba/b[height<=720]/b', '--merge-output-format', 'mp4',
+      '-o', file,
+    ];
+    if (platform === 'douyin' || platform === 'kuaishou') args.push('--user-agent', UA);
+    if (this.config[platform]?.cookie) args.push('--add-header', `Cookie:${this.config[platform].cookie}`);
+    args.push(url);
+    await runCommand(bin, args, { timeoutMs: Number(this.config.media?.downloadTimeoutSec || 600) * 1000 });
+    const stat = await fs.stat(file).catch(() => null);
+    if (!stat?.size) throw new Error('yt-dlp 没有生成视频文件');
+    return file;
+  }
+
+  async #watchKuaishouHtml(url, { title = '', autoWrite = null, favorite = true } = {}) {
+    const res = await this.#fetch(url, { headers: { accept: 'text/html', referer: 'https://www.kuaishou.com/' }, cookie: this.config.kuaishou?.cookie || '', userAgent: UA });
+    const html = await res.text();
+    const photo = html.match(/"(?:photoUrl|playUrl|srcNoWaterMark)"\s*:\s*"([^"]+)"/)?.[1] || '';
+    if (!photo) throw new Error('快手页面没有解析到视频流');
+    const clean = photo.replace(/\\u002F/g, '/').replace(/\\u0026/g, '&').replace(/\\/g, '');
+    const pageTitle = title || decodeEntities((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/\s+/g, ' ').trim()) || '快手视频';
+    const file = path.join(this.dir, 'videos', `kuaishou-${shortHash(url).slice(0, 10)}.mp4`);
+    await this.#download(clean, file, { headers: { referer: 'https://www.kuaishou.com/' }, maxMB: Number(this.config.media?.maxDownloadMB || 500), userAgent: UA });
+    return this.#watchAndLearnFile(file, { title: pageTitle, platform: 'kuaishou', url, id: shortHash(url), tags: ['快手'], autoWrite, favorite });
+  }
+
+  #parseKuaishouSearch(html) {
+    const items = [];
+    const re = /"(?:photoId|id)"\s*:\s*"([a-zA-Z0-9_-]{6,})"[\s\S]{0,3000}?"caption"\s*:\s*"([^"]+)"/g;
+    let m;
+    while ((m = re.exec(html)) && items.length < 30) {
+      items.push({ platform: 'kuaishou', id: m[1], title: decodeEntities(m[2]).slice(0, 200), author: '', url: `https://www.kuaishou.com/short-video/${m[1]}`, duration: 0, tags: [] });
+    }
+    return items;
+  }
+
+  /** B 站：真实下载并逐帧观看；没有流/下载失败时退回字幕或简介学习。 */
+  async bilibiliWatch(bvidOrUrl, { download = true, autoWrite = null, favorite = true, maxMB = null } = {}) {
+    const bvid = String(bvidOrUrl || '').match(/BV[0-9A-Za-z]+/)?.[0] || String(bvidOrUrl || '').trim();
+    if (!/^BV[0-9A-Za-z]+$/.test(bvid)) return { ok: false, error: '需要 B 站 BV 号或视频链接' };
+    try {
+      const view = await this.#biliView(bvid);
+      const cid = Number(view?.cid || view?.pages?.[0]?.cid || 0);
+      if (!cid) throw new Error('视频没有 cid');
+      const title = String(view.title || bvid).slice(0, 220);
+      const aid = Number(view.aid || 0);
+      const subtitles = await this.#biliSubtitles(bvid, cid).catch(() => null);
+      const subtitleText = (subtitles?.segments || []).map((x) => x.speechText).filter(Boolean).join('\n').slice(0, 8000);
+      const description = [view.desc || title, view.tname ? `分区：${view.tname}` : '', view.owner?.name ? `UP 主：${view.owner.name}` : ''].filter(Boolean).join('\n');
+      const tags = [view.tname, ...(view.pages?.[0]?.part ? [view.pages[0].part] : [])].filter(Boolean);
+      if (download !== false) {
+        const play = await this.#biliJson('https://api.bilibili.com/x/player/playurl', {
+          params: { bvid, cid, qn: 32, fnval: 0, fourk: 0, platform: 'html5' },
+          cookie: Boolean(this.config.bilibili?.cookie),
+        });
+        const durl = play?.durl?.[0]?.url || play?.dash?.video?.[0]?.baseUrl;
+        if (!durl) throw new Error('没有拿到视频流地址（可能需要登录 Cookie）');
+        const file = path.join(this.dir, 'videos', `${bvid}-${cid}.mp4`);
+        await this.#download(durl, file, {
+          headers: this.#biliHeaders(),
+          maxMB: Number(maxMB || this.config.bilibili?.maxDownloadMB || 300),
+          userAgent: '',
+        });
+        const watched = await this.#watchAndLearnFile(file, {
+          title, platform: 'bilibili', url: `https://www.bilibili.com/video/${bvid}`,
+          id: bvid, tags, autoWrite, favorite, subtitleText, description,
+        });
+        let accountFavorite = null;
+        if (this.config.bilibili?.autoFavorite !== false && this.config.bilibili?.cookie) {
+          accountFavorite = await this.bilibiliFavorite(bvid, { title, aid }).catch((err) => ({ ok: false, error: err.message }));
+        }
+        return { ...watched, accountFavorite };
+      }
+      const fallbackSubs = subtitles || await this.#biliSubtitles(bvid, cid).catch(() => null);
+      if (fallbackSubs?.segments?.length) {
+        const text = fallbackSubs.segments.map((s) => `[${Math.floor(s.start)}s] ${s.speechText}`).join('\n');
+        const learned = await this.learnText({ title, text, source: `bilibili:${bvid}`, url: `https://www.bilibili.com/video/${bvid}`, tags: ['bilibili', ...tags], autoWrite });
+        await this.addFavorite({ platform: 'bilibili', id: bvid, title, url: `https://www.bilibili.com/video/${bvid}`, summary: learned.summary, tags: ['视频', 'bilibili', ...tags], noteFile: learned.noteFile }).catch(() => {});
+        return { ok: true, bvid, title, mode: 'subtitles', ...learned };
+      }
+      return { ok: false, bvid, title, error: '没有可下载的视频流，且没有字幕', mode: 'no-stream' };
+    } catch (err) {
+      this.state.bilibili.lastError = err.message;
+      await this.#saveState().catch(() => {});
+      return { ok: false, bvid, error: err.message };
+    }
+  }
+
+  /** 写入 B 站「DeepSeek的收藏夹」；需要 Cookie 含 bili_jct。失败只返回错误，不影响本地学习。 */
+  async bilibiliFavorite(bvidOrUrl, { title = '', aid = 0 } = {}) {
+    const cfg = this.config.bilibili || {};
+    const cookie = String(cfg.cookie || '');
+    if (!cookie) return { ok: false, reason: 'no-cookie' };
+    const csrf = cookie.match(/bili_jct=([^;]+)/)?.[1];
+    if (!csrf) return { ok: false, reason: 'no-csrf' };
+    const bvid = String(bvidOrUrl || '').match(/BV[0-9A-Za-z]+/)?.[0] || String(bvidOrUrl || '').trim();
+    if (!/^BV[0-9A-Za-z]+$/.test(bvid)) return { ok: false, reason: 'bad-bvid' };
+    let aidValue = Number(aid || 0);
+    if (!aidValue) {
+      const view = await this.#biliView(bvid).catch(() => null);
+      aidValue = Number(view?.aid || 0);
+    }
+    if (!aidValue) return { ok: false, reason: 'no-aid' };
+    const nav = await this.#biliJson('https://api.bilibili.com/x/web-interface/nav', { cookie: true }).catch(() => null);
+    const mid = Number(nav?.mid || nav?.mid || 0);
+    if (!mid) return { ok: false, reason: 'not-logged-in' };
+    const folderTitle = String(cfg.favoriteFolder || 'DeepSeek的收藏夹').slice(0, 40);
+    const list = await this.#biliJson('https://api.bilibili.com/x/v3/fav/folder/created/list-all', { params: { up_mid: mid }, cookie: true }).catch(() => null);
+    let folder = (list?.list || []).find((x) => String(x.title || '').trim() === folderTitle);
+    if (!folder) {
+      const created = await this.#biliPostForm('/x/v3/fav/folder/add', { title: folderTitle, privacy: 0, csrf });
+      folder = { id: created?.id || created?.data?.id, title: folderTitle };
+    }
+    if (!folder?.id) return { ok: false, reason: 'no-folder-id' };
+    const added = await this.#biliPostForm('/x/v3/fav/resource/deal', {
+      rid: aidValue, type: 2, add_media_ids: folder.id, csrf,
+    });
+    return { ok: true, folder: folderTitle, folderId: folder.id, aid: aidValue, response: added };
   }
 
   // ───────────────────────── 文本学习 ─────────────────────────
@@ -351,11 +716,12 @@ export class ContentHub {
     const step = 1200;
     for (let i = 0; i < clean.length && chunks.length < maxNotes; i += step) chunks.push(clean.slice(i, i + step));
     const notes = [];
+    const useLlm = this.config.learning?.useLlm === true;
     for (const chunk of chunks) {
-      const llm = await this.#learnChunkWithLlm(title, chunk).catch((err) => {
+      const llm = useLlm ? await this.#learnChunkWithLlm(title, chunk).catch((err) => {
         this.logger?.debug?.('学习文本 LLM 不可用', { error: err.message });
         return null;
-      });
+      }) : null;
       if (llm?.points?.length) {
         for (const p of llm.points.slice(0, 4)) notes.push({ content: String(p).slice(0, 600), tags: ['学习', ...tags].slice(0, 12) });
       } else {
@@ -410,7 +776,9 @@ export class ContentHub {
     });
     const html = await res.text();
     const title = decodeEntities((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/\s+/g, ' ').trim()) || '未命名小说';
-    const paragraphs = paragraphsFromHtml(html).slice(0, 200);
+    const paragraphs = paragraphsFromHtml(html)
+      .filter((p) => p.length >= 20 && !/^(推荐|诗文|名句|古籍|作者|字词|列表循环|随机播放|单曲循环|下载|扫码|客户端|古文岛|©|\d+(\.\d+)?x)/.test(p.trim()) && !/古诗文网|扫码|下载APP|播放器|字体大小|上一章|下一章/.test(p))
+      .slice(0, 200);
     if (paragraphs.length < 2) throw new Error('页面没有提取到正文（可能需要登录 Cookie，或站点使用动态渲染）');
     const chapterLinks = [];
     const linkRe = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -421,6 +789,22 @@ export class ContentHub {
       try { chapterLinks.push({ title: label.slice(0, 80), url: new URL(lm[1], url).href }); } catch { /* ignore */ }
     }
     return { url, title, paragraphs, chapterLinks: chapterLinks.slice(0, 500), fetchedAt: nowIso() };
+  }
+
+  /** 公版中文小说目录检索：只索引明确的公版站点，避免抓取付费/受版权保护内容。 */
+  async novelSearch(keyword = '') {
+    const library = [
+      { title: '三国演义', author: '罗贯中', aliases: ['三国', 'sanguo', '三国志演义'], url: 'https://www.diancang.xyz/wenxueyishu/sanguoyanyi/' },
+      { title: '西游记', author: '吴承恩', aliases: ['西游', 'xiyouji'], url: 'https://www.diancang.xyz/wenxueyishu/xiyouji/' },
+      { title: '水浒传', author: '施耐庵', aliases: ['水浒', 'shuihu'], url: 'https://www.diancang.xyz/wenxueyishu/shuihuzhuan/' },
+      { title: '红楼梦', author: '曹雪芹', aliases: ['红楼', 'honglou'], url: 'https://www.diancang.xyz/wenxueyishu/hongloumeng/' },
+      { title: '聊斋志异', author: '蒲松龄', aliases: ['聊斋', 'liaozhai'], url: 'https://www.diancang.xyz/wenxueyishu/liaozhaizhiyi/' },
+    ];
+    const q = String(keyword || '').trim().toLowerCase();
+    const items = library
+      .filter((x) => !q || [x.title, x.author, ...x.aliases].some((v) => String(v).toLowerCase().includes(q)))
+      .map((x) => ({ platform: 'diancang', title: x.title, author: x.author, url: x.url }));
+    return { ok: items.length > 0, keyword: q, items: items.length ? items : library.map((x) => ({ platform: 'diancang', title: x.title, author: x.author, url: x.url })) };
   }
 
   async novelOpen(url) {

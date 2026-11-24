@@ -54,7 +54,7 @@
     "mode": "hybrid",
     "fpsCap": 60,
     "maxFrames": 120000,
-    "maxVideoSeconds": 120,
+    "maxVideoSeconds": 1800,
     "coverageThreshold": 0.999,
     "maxGapMs": 1000,
     "chunkSec": 30,
@@ -76,7 +76,8 @@
       "language": "zh",
       "command": "",
       "model": "whisper"
-    }
+    },
+    "useLlm": false
   },
   "knowledge": {
     "dedupeThreshold": 0.9,
@@ -166,14 +167,17 @@
     },
     "proactive": {
       "enabled": true,
-      "maxPerDay": 2,
-      "minGapMin": 120,
+      "maxPerDay": 7,
+      "minGapMin": 30,
       "maxAgeHours": 72,
       "maxChars": 160,
       "quietHours": [
         "23:00",
         "07:00"
-      ]
+      ],
+      "unansweredBeforeFinal": 6,
+      "sendFinalNudge": true,
+      "awayAfterFinal": true
     }
   },
   "safety": {
@@ -274,10 +278,31 @@
     "maxTokens": 1024
   },
   "media": {
-    "ffmpeg": "ffmpeg",
-    "ffprobe": "ffprobe",
-    "maxConcurrent": 1,
-    "asrCommand": ""
+    "enabled": true,
+    "platforms": [
+      "bilibili",
+      "douyin",
+      "kuaishou"
+    ],
+    "topics": [],
+    "maxVideosPerDay": 8,
+    "maxVideoSeconds": 1800,
+    "maxDownloadMB": 500,
+    "downloadTool": "yt-dlp",
+    "downloadTimeoutSec": 600,
+    "searchLimit": 10,
+    "minVideoSeconds": 15,
+    "restAfterVideos": 3,
+    "restMinutes": 20,
+    "novelWhenTired": true,
+    "novelChaptersPerRest": 2,
+    "novelUrl": "",
+    "autoFavorite": true,
+    "downloadVideo": true,
+    "quietHours": [
+      "23:00",
+      "07:00"
+    ]
   },
   "logging": {
     "level": "info",
@@ -294,7 +319,9 @@
       "quality": 16,
       "downloadVideo": false,
       "maxDownloadMB": 200,
-      "learnSubtitles": true
+      "learnSubtitles": true,
+      "autoFavorite": true,
+      "favoriteFolder": "DeepSeek的收藏夹"
     },
     "novel": {
       "enabled": true,
@@ -306,7 +333,16 @@
     },
     "learning": {
       "autoWriteMemory": true,
-      "maxNotesPerItem": 20
+      "maxNotesPerItem": 20,
+      "useLlm": false
+    },
+    "douyin": {
+      "enabled": true,
+      "cookie": ""
+    },
+    "kuaishou": {
+      "enabled": true,
+      "cookie": ""
     }
   },
   "screenStudy": {

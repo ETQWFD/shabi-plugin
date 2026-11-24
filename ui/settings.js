@@ -160,6 +160,7 @@ function renderGroup(group) {
     else if (field.type === 'memoryList') body.appendChild(specialContainer(field, 'memory-panel'));
     else if (field.type === 'actionList') body.appendChild(specialContainer(field, 'action-panel'));
     else if (field.type === 'platformStatus') body.appendChild(specialContainer(field, 'platform-panel'));
+    else if (field.type === 'favoriteList') body.appendChild(specialContainer(field, 'favorites-panel'));
     else if (field.type === 'readonly') body.appendChild(renderReadonly(field));
     else body.appendChild(renderField(field));
   }
@@ -178,7 +179,7 @@ function specialContainer(field, cls) {
   control.className = 'field-control';
   const inner = document.createElement('div');
   inner.className = cls;
-  inner.dataset.specialTarget = field.type;
+  inner.dataset.specialTarget = cls;
   control.appendChild(inner);
   wrap.append(label, control);
   return wrap;
@@ -447,7 +448,47 @@ function hydrateSpecialPanels() {
   for (const el of $$('[data-special-target="memory-panel"]')) renderMemoryPanel(el);
   for (const el of $$('[data-special-target="action-panel"]')) renderActionsPanel(el);
   for (const el of $$('[data-special-target="platform-panel"]')) renderPlatforms(el);
+  for (const el of $$('[data-special-target="favorites-panel"]')) loadFavorites(el);
   for (const el of $$('[data-readonly-box]')) renderReadonlyValue(el);
+}
+
+async function loadFavorites(container) {
+  try {
+    const data = await api('/media', { method: 'GET' });
+    renderFavorites(container, data.favorites || []);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">收藏夹加载失败：${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderFavorites(container, items = []) {
+  container.innerHTML = '';
+  if (!items.length) {
+    container.innerHTML = '<div class="empty-state">还没有收藏。看完视频后会自动保存到这里。</div>';
+    return;
+  }
+  const grid = document.createElement('div');
+  grid.className = 'card-grid';
+  for (const item of items.slice(0, 60)) {
+    const card = document.createElement('div');
+    card.className = 'mini-card';
+    const platform = String(item.platform || 'local');
+    card.innerHTML = `<h3>${escapeHtml(item.title || '未命名')}</h3>
+      <p>${escapeHtml(String(item.summary || '暂无摘要').slice(0, 220))}</p>
+      <div class="meta"><span>${escapeHtml(platform)}</span><span>${escapeHtml(String(item.addedAt || '').slice(0, 10))}</span>${item.important ? '<span>重点</span>' : ''}</div>`;
+    if (item.url) {
+      const ops = document.createElement('div');
+      ops.className = 'ops';
+      const open = document.createElement('button');
+      open.className = 'btn small ghost';
+      open.textContent = '打开原页面';
+      open.onclick = () => window.open(item.url, '_blank', 'noopener');
+      ops.appendChild(open);
+      card.appendChild(ops);
+    }
+    grid.appendChild(card);
+  }
+  container.appendChild(grid);
 }
 
 function renderPersonalityCards(container) {
@@ -848,6 +889,11 @@ async function checkPlatform(platform, btn = null) {
 
 function renderReadonlyValue(box) {
   const source = box.dataset.readonlyBox;
+  if (source === '__readonly.media.status') {
+    const m = state.status?.media || {};
+    box.textContent = `模式：${m.mode || 'idle'}；今日 ${m.videosToday || 0}/${m.maxVideosPerDay || 8} 条；收藏 ${m.favorites?.favoriteCount ?? 0} 条${m.restUntil ? `；休息到 ${new Date(m.restUntil).toLocaleTimeString()}` : ''}`;
+    return;
+  }
   if (source === '__readonly.study.inbox') {
     box.textContent = state.status?.study?.inbox || state.config?.study?.inbox || '~/.dsh/shabi/study/inbox';
     return;
@@ -1007,6 +1053,20 @@ async function runAction(action, btn) {
       const data = await api('/content', { method: 'POST', body: { action: 'bilibiliLearn', bvid: target }, allowFail: true });
       if (!data.ok) throw new Error(data.error || '学习失败');
       showResultModal('学习完成', { title: data.title, mode: data.mode, summary: data.summary, notes: data.notes, memoryIds: data.memoryIds }, true);
+    } else if (action === 'mediaTick') {
+      const data = await api('/media', { method: 'POST', body: { action: 'tick' }, allowFail: true });
+      if (data.ok === false) throw new Error(data.error || '启动失败');
+      if (data.started) toast(`开始自主观看：${data.candidate?.title || '视频'}`, 'ok');
+      else if (data.action === 'novel') toast(`休息一下，读小说：${data.title || ''}`, 'ok');
+      else toast(data.reason === 'daily-video-limit' ? '今天已经看够了，先休息' : `没有开始：${data.reason || '无候选'}`, '');
+      const fresh = await api('/status');
+      state.status = fresh.status || state.status;
+      updateStatus();
+    } else if (action === 'mediaFavorites') {
+      const data = await api('/media', { method: 'GET' });
+      const panel = $('[data-special-target="favorites-panel"]');
+      if (panel) renderFavorites(panel, data.favorites || []);
+      toast(`收藏夹：共 ${(data.favorites || []).length} 条`, 'ok');
     } else if (action === 'selfcheck') {
       const data = await api('/selfcheck', { method: 'POST', allowFail: true });
       showSelfcheck(data.report || data);

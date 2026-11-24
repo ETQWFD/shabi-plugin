@@ -1,9 +1,9 @@
 {
   "id": "shabi-plugin",
   "name": "沙币",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "type": "dsh-bundle",
-  "description": "带眼睛、长期记忆、人格、自主循环、空闲陪伴、逐帧视频学习与 QQ 官方机器人的桌面插件。",
+  "description": "带眼睛、长期记忆、人格、空闲陪伴、平台自主学习（B站/抖音/快手视频、小说）、逐帧视频学习与 QQ 官方机器人的桌面插件。",
   "entry": "main.js",
   "icon": "ui/icon.svg",
   "dsh": {
@@ -39,7 +39,11 @@
     "web-settings-section",
     "autonomous-study",
     "idle-companion",
-    "proactive-qq"
+    "proactive-qq",
+    "platform-autonomy",
+    "content-favorites",
+    "novel-autonomy",
+    "proactive-unanswered"
   ],
   "permissions": [
     {
@@ -182,16 +186,38 @@
     {
       "name": "状态",
       "description": "查看运行状态"
+    },
+    {
+      "name": "自己去看视频",
+      "description": "自己搜索并看一条平台视频，看完总结、收藏"
+    },
+    {
+      "name": "平台学习状态",
+      "description": "查看今天看了多少、何时休息"
+    },
+    {
+      "name": "收藏夹",
+      "description": "查看看完保存的内容"
     }
   ],
   "compliance": {
     "account": "账号由用户本人登录并授权；插件不代登录、不保存密码。",
     "antiHarassment": "不骚扰其他用户，不批量私信、评论、刷量；操作频率接近正常用户。",
-    "platformLimits": "遇到验证码、风控提示、平台限制或规则不允许时立即停止并提示用户。",
+    "platformLimits": "平台明确拒绝或限流时记录原因并稍后重试/换候选；不绕过验证码或平台限制。",
     "noEvasion": "不实现反检测、不绕过平台限制、不伪造人类行为指纹。",
     "selfieDisclosure": "所有生成图片标注“AI 生成”，不冒充真人。",
     "privacy": "屏幕、记忆与聊天默认本地处理；日志脱敏；记忆内容 AES-256-GCM 加密。",
-    "screenLearning": "只读取用户当前屏幕，逐帧视觉理解；默认不 OCR，视觉模型不可用时才兜底；不登录视频平台、不抓取视频流、不控制播放器。",
-    "autonomy": "自主循环只执行白名单动作；不安装软件、不执行系统命令、不登录平台、不自动刷视频或自动收藏。"
+    "screenLearning": "支持 B 站公开接口搜索/下载后逐帧理解；抖音/快手需要用户提供链接或登录 Cookie；不绕过验证码、不伪造登录。",
+    "autonomy": "自主观看按兴趣选择公开内容，受每日条数、下载大小与休息限制；不安装软件、不执行系统命令、不批量骚扰他人。"
+  },
+  "properties": {
+    "easterEgg": {
+      "label": "梁圣彩蛋",
+      "value": "梁圣:\"我的deepseek的记忆只有七秒,我要给他完整的一生\""
+    },
+    "memoryNote": {
+      "label": "记忆说明",
+      "value": "每看完一条视频会总结知识点并写入长期记忆与收藏夹。"
+    }
   }
 }

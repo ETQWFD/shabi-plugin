@@ -276,3 +276,5 @@ html.embedded .content { padding: 14px 14px 92px; }
 html.embedded .topbar { padding-left: 14px; padding-right: 14px; }
 html.embedded .topbar h1 { font-size: 17px; }
 html.embedded .topbar p { display: none; }
+
+.easter-egg { margin-top: 8px; color: var(--muted); font-size: 10.5px; line-height: 1.5; opacity: .75; word-break: break-word; }

@@ -13,6 +13,7 @@ export class Companion {
   constructor(ctx) {
     this.ctx = ctx;
     this.config = ctx.config.companion || {};
+    this.media = ctx.media || null;
     this.stateFile = path.join(ctx.paths.data, 'companion_state.json');
     this.timer = null;
     this.running = false;
@@ -66,6 +67,11 @@ export class Companion {
         return this.#done({ skipped: true, reason: 'quiet-hours' });
       }
 
+      let mediaStarted = null;
+      if (this.media && this.media.config?.enabled !== false) {
+        try { mediaStarted = await this.media.tick(); } catch (err) { this.logger?.warn('平台自主学习 tick 失败', { error: err.message }); }
+      }
+
       const study = this.ctx.study;
       if (this.config.autoStudy !== false && study) {
         const started = study.startNext();
@@ -78,10 +84,11 @@ export class Companion {
 
       if (this.ctx.qq?.config?.proactive?.enabled === true) {
         const sent = await this.#maybeProactive(now);
-        if (sent) return this.#done({ skipped: false, action: 'proactive', result: sent });
+        if (sent) return this.#done({ skipped: false, action: 'proactive', result: sent, media: mediaStarted });
       }
+      if (mediaStarted && !mediaStarted.skipped) return this.#done({ skipped: false, action: mediaStarted.action || 'media', result: mediaStarted });
 
-      return this.#done({ skipped: true, reason: 'nothing-to-do' });
+      return this.#done({ skipped: true, reason: 'nothing-to-do', media: mediaStarted });
     } finally {
       this.ticking = false;
     }
@@ -94,7 +101,12 @@ export class Companion {
     const lastUser = qq.lastC2C?.at ? new Date(qq.lastC2C.at).getTime() : 0;
     const minIdle = Number(this.config.proactiveMinIdleMin || 45) * 60000;
     if (!lastUser || now.getTime() - lastUser < minIdle) return null;
-    const text = await this.#composeMessage();
+    const status = qq.getProactiveStatus?.() || {};
+    if (status.awayMode) return null;
+    const finalDue = status.unanswered >= (status.unansweredBeforeFinal || 6) && !status.finalSentAt;
+    const text = finalDue
+      ? '你一直没回我。我先把想说的话放这儿：我去自己看会儿视频、读点东西，等你回来。'
+      : await this.#composeMessage();
     if (!text) return null;
     const sent = await qq.sendProactive(text, { reason: 'idle-companion' });
     if (!sent.ok) return null;
@@ -137,6 +149,7 @@ export class Companion {
       intervalSec: Number(this.config.intervalSec || 300),
       autoStudy: this.config.autoStudy !== false,
       proactiveQQ: this.ctx.qq?.config?.proactive?.enabled === true,
+      media: this.media?.getStatus?.() || null,
       quietHours: this.config.quietHours || ['23:00', '07:00'],
       lastTickAt: this.state.lastTickAt,
       lastAction: this.state.lastAction,

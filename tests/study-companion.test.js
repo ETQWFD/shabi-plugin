@@ -44,7 +44,7 @@ test('自主学习队列：扫描本地视频 → 逐帧学习 → 笔记/记忆
 });
 
 test('空闲陪伴：队列为空且没有主动消息授权时只返回 nothing-to-do', async () => {
-  const { app, cleanup } = await makeApp({ prefix: 'companion', config: { companion: { enabled: false, intervalSec: 60 } } });
+  const { app, cleanup } = await makeApp({ prefix: 'companion', config: { companion: { enabled: false, intervalSec: 60 }, media: { enabled: false } } });
   try {
     app.companion.config = { enabled: true, intervalSec: 60, autoStudy: true, proactiveQQ: false, quietHours: [] };
     app.companion.start();

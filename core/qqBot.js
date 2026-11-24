@@ -40,9 +40,10 @@ export class QQBot {
     this.#buildLimiters();
     this.proactiveState = (await readIoshb(this.qqStateFile).catch(() => null)) || {
       format: 'IOSHB1', version: 1, lastC2C: null,
-      proactive: { day: null, count: 0, lastAt: null, suppressedUntil: null },
+      proactive: { day: null, count: 0, lastAt: null, suppressedUntil: null, unanswered: 0, finalSentAt: null, awayMode: false, lastUserAt: null },
     };
     this.lastC2C = this.proactiveState.lastC2C || null;
+    this.proactiveState.proactive = this.proactiveState.proactive || {};
     return this;
   }
 
@@ -353,9 +354,10 @@ export class QQBot {
     if (msg.type === 'c2c') {
       this.lastC2C = { type: 'c2c', channelId: msg.channelId, target: msg.target, userId: msg.userId, id: msg.id, at: nowIso() };
       this.proactiveState.proactive = this.proactiveState.proactive || {};
-      if (!this.proactiveState.proactive.lastUserAt || this.proactiveState.proactive.lastUserAt < (this.lastC2C.at || '')) {
-        this.proactiveState.proactive.lastUserAt = this.lastC2C.at;
-      }
+      this.proactiveState.proactive.lastUserAt = this.lastC2C.at;
+      this.proactiveState.proactive.unanswered = 0;
+      this.proactiveState.proactive.finalSentAt = null;
+      this.proactiveState.proactive.awayMode = false;
       await this.#saveState();
     }
     if (this.config.proactive?.enabled && /^(别发了|停止主动|不要主动|别再找我|闭嘴)$/i.test(text)) {
@@ -480,9 +482,13 @@ export class QQBot {
       lastC2C: this.lastC2C ? { channelId: this.lastC2C.channelId, at: this.lastC2C.at } : null,
       lastAt: p.lastAt || null,
       count: resetDay(p).count,
-      maxPerDay: Number(this.config.proactive?.maxPerDay || 2),
-      minGapMin: Number(this.config.proactive?.minGapMin || 120),
+      maxPerDay: Number(this.config.proactive?.maxPerDay || 7),
+      minGapMin: Number(this.config.proactive?.minGapMin || 30),
       suppressedUntil: p.suppressedUntil || null,
+      unanswered: Number(p.unanswered || 0),
+      unansweredBeforeFinal: Number(this.config.proactive?.unansweredBeforeFinal || 6),
+      finalSentAt: p.finalSentAt || null,
+      awayMode: Boolean(p.awayMode),
     };
   }
 
@@ -496,21 +502,28 @@ export class QQBot {
     this.proactiveState.proactive = resetDay(this.proactiveState.proactive || {}, now);
     const p = this.proactiveState.proactive;
     if (p.suppressedUntil && now.getTime() < new Date(p.suppressedUntil).getTime()) return { ok: false, reason: 'user-suppressed' };
+    if (p.awayMode) return { ok: false, reason: 'away-mode' };
     if (inQuietHours(cfg.quietHours || ['23:00', '07:00'], now)) return { ok: false, reason: 'quiet-hours' };
-    if (p.count >= Number(cfg.maxPerDay || 2)) return { ok: false, reason: 'daily-limit' };
-    if (p.lastAt && now.getTime() - new Date(p.lastAt).getTime() < Number(cfg.minGapMin || 120) * 60000) return { ok: false, reason: 'gap-limit' };
+    const beforeFinal = Number(cfg.unansweredBeforeFinal || 6);
+    if (p.finalSentAt && Number(p.unanswered || 0) >= beforeFinal && !p.awayMode) return { ok: false, reason: 'final-nudge-sent' };
+    const isFinal = !p.finalSentAt && Number(p.unanswered || 0) >= beforeFinal;
+    if (!isFinal && p.count >= Number(cfg.maxPerDay || 7)) return { ok: false, reason: 'daily-limit' };
+    if (p.lastAt && now.getTime() - new Date(p.lastAt).getTime() < Number(cfg.minGapMin || 30) * 60000) return { ok: false, reason: 'gap-limit' };
     const ageHours = (now.getTime() - new Date(this.lastC2C.at || now).getTime()) / 3600000;
     if (ageHours > Number(cfg.maxAgeHours || 72)) return { ok: false, reason: 'context-too-old' };
     const content = String(text || '').trim().slice(0, Number(cfg.maxChars || 160));
     if (!content) return { ok: false, reason: 'empty' };
     try {
       await this.sendMessage(this.lastC2C, content, undefined, { proactive: true });
-      p.count += 1;
+      p.count = Number(p.count || 0) + 1;
+      p.unanswered = Number(p.unanswered || 0) + 1;
       p.lastAt = nowIso();
-      p.lastReason = reason;
+      p.lastReason = isFinal ? 'final-nudge' : reason;
+      if (isFinal && cfg.awayAfterFinal !== false) p.awayMode = true;
+      if (isFinal) p.finalSentAt = p.lastAt;
       await this.#saveState();
       this.stats.replied += 1;
-      return { ok: true, channelId: this.lastC2C.channelId, reason };
+      return { ok: true, channelId: this.lastC2C.channelId, reason: p.lastReason, final: isFinal };
     } catch (err) {
       this.stats.errors += 1;
       this.stats.lastError = err.message;

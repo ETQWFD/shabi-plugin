@@ -27,6 +27,7 @@ import { InterestEngine } from './core/interest.js';
 import { ContentHub } from './core/content.js';
 import { ScreenStudy } from './core/screenStudy.js';
 import { StudyHub } from './core/study.js';
+import { MediaAutonomy } from './core/mediaAutonomy.js';
 import { Companion } from './core/companion.js';
 import { ImageApi } from './core/imageApi.js';
 import { QQBot } from './core/qqBot.js';
@@ -91,6 +92,8 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
     await app.screenStudy.init();
     app.study = new StudyHub(app);
     await app.study.init();
+    app.media = new MediaAutonomy(app);
+    await app.media.init();
     app.companion = new Companion(app);
     await app.companion.init();
     app.imageApi = new ImageApi(app);
@@ -129,6 +132,7 @@ export async function createShabiPlugin({ root = PLUGIN_ROOT, config: overrides 
       app.eye.stop();
       app.screenStudy?.dispose?.();
       app.companion?.dispose?.();
+      app.media?.dispose?.();
       app.study?.dispose?.();
       app.autonomy.stopLoop();
       await app.qq.stopBot().catch(() => {});
@@ -557,7 +561,7 @@ async function registerTools(app, ctx) {
     },
     {
       name: 'shabi_companion',
-      description: '空闲陪伴循环：空闲时优先学习队列；QQ 主动消息必须显式开启，严格限额。不执行系统命令、不安装软件、不自动刷平台。',
+      description: '空闲陪伴循环：优先本地学习队列和平台自主学习，QQ 主动消息严格限额；用户连续六条未回后只再发一条最终消息，然后进入 away 模式继续自己看视频/读小说。',
       parameters: {
         action: { type: 'string', required: true, description: 'status/start/stop/tick' },
       },
@@ -570,11 +574,35 @@ async function registerTools(app, ctx) {
       },
     },
     {
+      name: 'shabi_media',
+      description: '平台自主学习：按兴趣搜索并观看 B 站/抖音/快手视频，逐帧总结写记忆、收藏；看完若干条后休息并读小说。',
+      parameters: {
+        action: { type: 'string', required: true, description: 'status/tick/start/stop/favorites/watchUrl/search' },
+        url: { type: 'string', description: '直接观看的视频链接' },
+        platform: { type: 'string', description: 'bilibili/douyin/kuaishou' },
+        keyword: { type: 'string', description: '搜索关键词' },
+        title: { type: 'string', description: '视频标题（可选）' },
+        limit: { type: 'number', description: '返回条数' },
+      },
+      output: { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] },
+      async execute(args) {
+        if (args.action === 'tick') return JSON.stringify(await app.media.tick({ manual: true }), null, 2);
+        if (args.action === 'start') return JSON.stringify(app.media.resume(), null, 2);
+        if (args.action === 'stop') return JSON.stringify(app.media.pause(), null, 2);
+        if (args.action === 'favorites') return JSON.stringify({ ok: true, items: await app.content.listFavorites(args.limit || 100) }, null, 2);
+        if (args.action === 'search') return JSON.stringify(await app.content.platformSearch(args.platform || 'bilibili', args.keyword || '', { limit: args.limit || 10 }), null, 2);
+        if (args.action === 'watchUrl') return JSON.stringify(await app.content.watchUrl(args.url, { platform: args.platform, title: args.title }), null, 2);
+        return JSON.stringify(app.media.getStatus(), null, 2);
+      },
+    },
+    {
       name: 'shabi_content',
       description: '内容执行层：刷 B 站推荐、学一条 B 站视频、打开/翻页/学习小说。使用用户本人登录 Cookie，遇风控立即停止。',
       parameters: {
-        action: { type: 'string', required: true, description: 'feed/next/bilibiliLearn/novelOpen/novelNext/novelLearn/learnText' },
+        action: { type: 'string', required: true, description: 'feed/next/search/bilibiliLearn/bilibiliWatch/watchUrl/favorites/novelSearch/novelOpen/novelNext/novelLearn/learnText' },
         bvid: { type: 'string', description: 'B 站 BV 号或视频链接' },
+        title: { type: 'string', description: '标题（可选）' },
+        platform: { type: 'string', description: 'bilibili/douyin/kuaishou（可选）' },
         url: { type: 'string', description: '小说页面地址' },
         text: { type: 'string', description: 'learnText 的文本' },
         title: { type: 'string', description: 'learnText 的标题' },
@@ -585,6 +613,11 @@ async function registerTools(app, ctx) {
         if (args.action === 'feed') return JSON.stringify(await app.content.bilibiliFeed({ limit: args.limit, fresh: true }), null, 2);
         if (args.action === 'next') return JSON.stringify(await app.content.bilibiliNext({ limit: args.limit }), null, 2);
         if (args.action === 'bilibiliLearn') return JSON.stringify(await app.content.bilibiliLearn(args.bvid || args.url), null, 2);
+        if (args.action === 'bilibiliWatch') return JSON.stringify(await app.content.bilibiliWatch(args.bvid || args.url, { download: true }), null, 2);
+        if (args.action === 'search') return JSON.stringify(await app.content.bilibiliSearch(args.keyword || args.title || '', { limit: args.limit || 10 }), null, 2);
+        if (args.action === 'watchUrl') return JSON.stringify(await app.content.watchUrl(args.url, { platform: args.platform, title: args.title }), null, 2);
+        if (args.action === 'favorites') return JSON.stringify({ ok: true, items: await app.content.listFavorites(args.limit || 100) }, null, 2);
+        if (args.action === 'novelSearch') return JSON.stringify(await app.content.novelSearch(args.keyword || ''), null, 2);
         if (args.action === 'novelOpen') return JSON.stringify(await app.content.novelOpen(args.url), null, 2);
         if (args.action === 'novelNext') return JSON.stringify(await app.content.novelNext(), null, 2);
         if (args.action === 'novelLearn') return JSON.stringify(await app.content.novelLearn(), null, 2);
@@ -613,7 +646,7 @@ async function registerTools(app, ctx) {
       failures.push(tool.name);
     }
   }
-  app.logger.info('工具注册完成', { registered: tools.length - failures.length, total: tools.length, failures });
+  app.logger.info(`工具注册完成 registered:${tools.length - failures.length} total:${tools.length} failures:${JSON.stringify(failures)}`);
 }
 
 /**
@@ -730,6 +763,19 @@ function setupApiRoutes(app) {
     if (action === 'stop') return json({ ok: true, ...(app.companion.stop()) });
     if (action === 'tick') return json({ ok: true, ...(await app.companion.tick()) });
     return json({ ok: true, companion: app.companion.getStatus() });
+  });
+
+  register('/shabi/api/media', async (req) => {
+    if (req.method === 'GET') return json({ ok: true, media: app.media.getStatus(), favorites: await app.content.listFavorites(100) });
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+    const action = req.body?.action || 'status';
+    if (action === 'tick') return json({ ok: true, ...(await app.media.tick({ manual: true })) });
+    if (action === 'watchUrl') return json({ ok: true, ...(await app.content.watchUrl(req.body.url, { platform: req.body.platform, title: req.body.title, favorite: req.body.favorite !== false })) });
+    if (action === 'search') return json({ ok: true, ...(await app.content.platformSearch(req.body.platform || 'bilibili', req.body.keyword || '', { limit: req.body.limit || 10 })) });
+    if (action === 'favorites') return json({ ok: true, items: await app.content.listFavorites(req.body.limit || 100) });
+    if (action === 'start') return json({ ok: true, media: app.media.resume() });
+    if (action === 'stop') return json({ ok: true, media: app.media.pause() });
+    return json({ ok: true, media: app.media.getStatus() });
   });
 
   register('/shabi/api/eye', async (req) => {
@@ -888,7 +934,9 @@ async function applyRuntimeConfig(app, next) {
   app.content.config = next.content;
   app.screenStudy.config = next.screenStudy;
   app.study.config = next.study;
+  app.media.config = next.media;
   app.companion.config = next.companion;
+  app.companion.media = app.media;
   app.eye.config = next.eye;
   app.eye.privacy = next.eye?.privacy || app.eye.privacy;
   app.logger.setLevel(next.logging?.level || app.logger.level);
@@ -959,6 +1007,7 @@ function buildStatus(app) {
     content: app.content?.getStatus?.(),
     screenStudy: app.screenStudy?.getStatus?.(),
     study: app.study?.getStatus?.(),
+    media: app.media?.getStatus?.(),
     companion: app.companion?.getStatus?.(),
     safety: app.safety.getStatus(),
     personalities: app.personality.listPersonalities(),
@@ -1051,6 +1100,11 @@ async function contentApi(app, req) {
   if (action === 'feed') return json({ ok: true, ...(await app.content.bilibiliFeed({ limit: req.body.limit, fresh: true })) });
   if (action === 'next') return json({ ok: true, ...(await app.content.bilibiliNext({ limit: req.body.limit })) });
   if (action === 'bilibiliLearn') return json({ ok: true, ...(await app.content.bilibiliLearn(req.body.bvid || req.body.url, { download: req.body.download })) });
+  if (action === 'bilibiliWatch') return json({ ok: true, ...(await app.content.bilibiliWatch(req.body.bvid || req.body.url, { download: req.body.download !== false, favorite: req.body.favorite !== false })) });
+  if (action === 'search') return json({ ok: true, ...(await app.content.platformSearch(req.body.platform || 'bilibili', req.body.keyword || '', { limit: req.body.limit || 10 })) });
+  if (action === 'watchUrl') return json({ ok: true, ...(await app.content.watchUrl(req.body.url, { platform: req.body.platform, title: req.body.title, favorite: req.body.favorite !== false })) });
+  if (action === 'favorites') return json({ ok: true, items: await app.content.listFavorites(req.body.limit || 100) });
+  if (action === 'novelSearch') return json({ ok: true, ...(await app.content.novelSearch(req.body.keyword || '')) });
   if (action === 'novelOpen') return json({ ok: true, ...(await app.content.novelOpen(req.body.url)) });
   if (action === 'novelNext') return json({ ok: true, ...(await app.content.novelNext()) });
   if (action === 'novelLearn') return json({ ok: true, ...(await app.content.novelLearn()) });

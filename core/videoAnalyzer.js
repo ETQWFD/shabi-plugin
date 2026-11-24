@@ -909,7 +909,9 @@ export class VideoAnalyzer {
     const speech = (transcript?.segments || []).map((s) => s.text).join(' ').slice(0, 6000);
     const visual = segs.filter((s) => s.visualSummary && s.visualSummary !== '画面无明显可识别内容').map((s) => `${s.start}s：${s.visualSummary}`).slice(0, 60);
     let summary = null;
-    try {
+    if (this.config.useLlm === false) {
+      this.logger?.debug?.('按配置跳过 LLM 视频摘要，使用抽取式摘要', { videoId });
+    } else try {
       const json = await this.host.llm.json(
         [
           { role: 'system', content: '你是视频摘要器。只依据材料总结，不编造。输出 JSON：{"summary":"不超过300字","keyPoints":["要点"],"topics":["主题"],"entities":["实体"],"highlights":[{"start":秒,"end":秒,"why":"看点"}]}' },
