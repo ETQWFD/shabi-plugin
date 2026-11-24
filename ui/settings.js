@@ -848,6 +848,10 @@ async function checkPlatform(platform, btn = null) {
 
 function renderReadonlyValue(box) {
   const source = box.dataset.readonlyBox;
+  if (source === '__readonly.study.inbox') {
+    box.textContent = state.status?.study?.inbox || state.config?.study?.inbox || '~/.dsh/shabi/study/inbox';
+    return;
+  }
   if (source === 'qqWebhook') {
     const path = state.config.qqBot?.webhookPath || '/shabi/qq/webhook';
     const base = state.config.qqBot?.publicBaseUrl || location.origin;
